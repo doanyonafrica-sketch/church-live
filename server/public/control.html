@@ -1,0 +1,12 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Church Live</title>
+<style>body{font-family:system-ui;background:#111;color:#eee;padding:24px}code{background:#222;padding:4px 8px;border-radius:6px;font-size:18px}h2{margin-top:28px}</style>
+<h1>Church Live : serveur actif</h1>
+<h2>1. Dans OBS</h2><p>Ajouter une <b>Source Navigateur</b> avec l'adresse :</p><p><code id="obs"></code></p>
+<h2>2. Dans l'application du téléphone, saisir :</h2><div id="ips"></div>
+<h2>État</h2><p id="s"></p>
+<script>
+async function r(){const i=await (await fetch('/info')).json();
+obs.textContent=i.obs;ips.innerHTML=i.addresses.map(a=>'<p><code>'+a+'</code></p>').join('')||'Aucun réseau détecté';
+s.textContent='Téléphone connecté : '+(i.publishers?'oui':'non')+' | OBS connecté : '+(i.viewers?'oui':'non');}
+r();setInterval(r,2000);
+</script>

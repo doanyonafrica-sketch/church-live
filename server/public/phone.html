@@ -1,0 +1,54 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Church Live</title>
+<style>body{font-family:system-ui;margin:0;background:#111;color:#eee;padding:12px}video{width:100%;max-height:42vh;background:#000;border-radius:8px}input,select,button{width:100%;box-sizing:border-box;padding:12px;margin:4px 0;font-size:16px;border-radius:8px;border:0}button{background:#2d6cdf;color:#fff}#st{padding:8px 0;font-weight:600}</style>
+<video id="v" autoplay muted playsinline></video>
+<div id="st">Prêt</div>
+<input id="addr" placeholder="Adresse du PC, ex : 192.168.1.10:3000">
+<select id="q"><option value="720">720p (recommandé)</option><option value="1080">1080p</option></select>
+<button id="go">Démarrer le direct</button><button id="flip" style="background:#444">Changer de caméra</button>
+<script>
+const $=id=>document.getElementById(id),BR={720:4e6,1080:6e6};
+let ws,pc,stream,facing='environment',running=false,wl;
+$('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
+const say=t=>$('st').textContent=t,sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
+async function cam(){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  const h=+$('q').value;
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  $('v').srcObject=stream;
+}
+function connect(){
+  if(!running)return;
+  ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
+  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});say("Connecté au PC, en attente d'OBS…")};
+  ws.onclose=()=>{if(running){say('Connexion perdue, nouvelle tentative…');setTimeout(connect,2000)}};
+  ws.onmessage=async e=>{const m=JSON.parse(e.data);
+    if(m.type==='viewer-joined')await offer();
+    else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
+    else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
+    else if(m.type==='viewer-left'){if(pc)pc.close();say('OBS déconnecté')}};
+}
+async function offer(){
+  if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
+  pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')say('EN DIRECT vers OBS')};
+  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  const s=pc.getSenders().find(s=>s.track&&s.track.kind==='video'),p=s.getParameters();
+  if(!p.encodings||!p.encodings.length)p.encodings=[{}];
+  p.encodings[0].maxBitrate=BR[$('q').value];p.degradationPreference='maintain-framerate';
+  await s.setParameters(p).catch(()=>{});
+  const o=await pc.createOffer();await pc.setLocalDescription(o);sj({type:'offer',sdp:o.sdp});
+}
+$('go').onclick=async()=>{
+  if(running){running=false;ws&&ws.close();pc&&pc.close();stream&&stream.getTracks().forEach(t=>t.stop());wl&&wl.release();$('go').textContent='Démarrer le direct';say('Arrêté');return}
+  if(!navigator.mediaDevices){say("Caméra bloquée : utilisez l'application Church Live (APK)");return}
+  try{localStorage.addr=$('addr').value;await cam();running=true;$('go').textContent='Arrêter le direct';
+    try{wl=await navigator.wakeLock.request('screen')}catch{}
+    connect();
+  }catch(e){say('Erreur caméra : '+e.message)}
+};
+$('flip').onclick=async()=>{
+  facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
+  if(pc)for(const x of pc.getSenders()){const t=stream.getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}
+};
+</script>

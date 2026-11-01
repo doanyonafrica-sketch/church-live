@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Church Live - OBS</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}</style>
+<video id="v" autoplay playsinline></video>
+<script>
+const room=new URLSearchParams(location.search).get('room')||'main';
+let ws,pc,q=Promise.resolve();
+const sj=o=>ws.send(JSON.stringify(o));
+async function handle(m){
+  if(m.type==='offer'){
+    if(pc)pc.close();
+    pc=new RTCPeerConnection({iceServers:[]});
+    pc.ontrack=e=>{try{e.receiver.jitterBufferTarget=0}catch{}try{e.receiver.playoutDelayHint=0}catch{}v.srcObject=e.streams[0]};
+    pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
+    await pc.setRemoteDescription({type:'offer',sdp:m.sdp});
+    const a=await pc.createAnswer();await pc.setLocalDescription(a);sj({type:'answer',sdp:a.sdp});
+  }else if(m.type==='candidate'&&pc){pc.addIceCandidate(m.candidate).catch(()=>{});}
+  else if(m.type==='publisher-left'){if(pc)pc.close();v.srcObject=null;}
+}
+function connect(){
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onopen=()=>sj({type:'join',role:'viewer',room});
+  ws.onclose=()=>setTimeout(connect,1000);
+  ws.onmessage=e=>{q=q.then(()=>handle(JSON.parse(e.data))).catch(console.error)};
+}
+connect();
+</script>

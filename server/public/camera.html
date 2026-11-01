@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>Church Live - Test caméra</title>
+<body style="font-family:sans-serif"><button id="b">Démarrer la caméra</button><br><video id="v" autoplay muted playsinline width="480"></video>
+<script>
+const room=new URLSearchParams(location.search).get('room')||'main';
+let ws,pc,stream;const sj=o=>ws.send(JSON.stringify(o));
+b.onclick=async()=>{
+  stream=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720,frameRate:30},audio:true});v.srcObject=stream;
+  ws=new WebSocket('ws://'+location.host+'/ws');
+  ws.onopen=()=>sj({type:'join',role:'publisher',room});
+  ws.onmessage=async e=>{const m=JSON.parse(e.data);
+    if(m.type==='viewer-joined'){
+      if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
+      pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
+      stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+      const s=pc.getSenders().find(s=>s.track.kind==='video'),p=s.getParameters();
+      p.encodings[0].maxBitrate=4e6;await s.setParameters(p);
+      const o=await pc.createOffer();await pc.setLocalDescription(o);sj({type:'offer',sdp:o.sdp});
+    }else if(m.type==='answer')pc.setRemoteDescription({type:'answer',sdp:m.sdp});
+    else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
+    else if(m.type==='viewer-left'&&pc)pc.close();
+  };
+};
+</script>

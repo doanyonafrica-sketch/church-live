@@ -1,0 +1,22 @@
+name: Build Windows
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build
+        shell: bash
+        run: |
+          mkdir desktop/server && cp server/server.js desktop/server/ && cp -r server/public desktop/server/
+          cd desktop && npm install && npx electron-builder --win --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: church-live-windows
+          path: desktop/dist/*.exe
