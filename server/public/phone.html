@@ -105,7 +105,7 @@ input[type=text],select{width:100%;background:var(--bg);color:var(--text);border
 
 <dialog id="sheet">
   <div class="sh"><h2>Réglages</h2><button id="close">Fermer</button></div>
-  <div class="fld"><label for="addr">Adresse du PC</label><input type="text" id="addr" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="192.168.1.10:3000"><p class="hint">Elle s'affiche dans la fenêtre Church Live sur le PC.</p></div>
+  <div class="fld"><label for="addr">Adresse du PC</label><input type="text" id="addr" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="192.168.1.10:3000"><p class="hint">Elle s'affiche dans la fenêtre TPR Live sur le PC.</p></div>
   <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
   <div id="diag">Le diagnostic apparaît pendant le direct.</div>
@@ -203,7 +203,7 @@ $('go').onclick=async()=>{
     document.body.classList.remove('live','run','cam','wait');$('v').srcObject=null;$('go').style.setProperty('--lv',0);$('go').setAttribute('aria-label','Démarrer le direct');$('gol').textContent='Démarrer';pill('Hors ligne');alertBox('');msg('Direct terminé.');$('clock').textContent='00:00:00';
     $('c2').textContent=$('c3').textContent=$('c4').textContent=$('c5').textContent='';return}
   if(!$('addr').value.trim()){openSet();return}
-  if(!navigator.mediaDevices){msg('Caméra bloquée par le navigateur. Utilisez l\'application Church Live (APK).');return}
+  if(!navigator.mediaDevices){msg('Caméra bloquée par le navigateur. Utilisez l\'application TPR Live (APK).');return}
   try{try{await document.documentElement.requestFullscreen();await screen.orientation.lock('landscape')}catch{}await cam();running=true;document.body.classList.add('run');$('go').setAttribute('aria-label','Terminer le direct');$('gol').textContent='Terminer';pill('Connexion…','wait');msg('Connexion au PC…');
     try{wl=await navigator.wakeLock.request('screen')}catch{}connect()}
   catch(e){msg('Caméra ou micro refusé. Autorisez-les dans les réglages du téléphone. ('+e.name+')')}

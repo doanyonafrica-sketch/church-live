@@ -1,7 +1,7 @@
 {
   "name": "church-live-desktop",
   "version": "1.0.0",
-  "description": "Church Live - serveur pour OBS",
+  "description": "TPR Live - serveur pour OBS",
   "author": "Doanyon Africa",
   "main": "main.js",
   "dependencies": {
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "africa.doanyon.churchlive.desktop",
-    "productName": "Church Live",
+    "productName": "TPR Live",
     "files": [
       "main.js",
       "build/icon.png",
