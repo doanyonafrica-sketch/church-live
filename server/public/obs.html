@@ -1,15 +1,19 @@
 <!doctype html><meta charset="utf-8"><title>Church Live - OBS</title>
-<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}</style>
-<video id="v" autoplay playsinline></video>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}
+#dbg{position:fixed;left:8px;top:8px;font:14px/1.4 monospace;color:#0f0;background:rgba(0,0,0,.65);padding:6px 10px;white-space:pre;display:none}</style>
+<video id="v" autoplay playsinline></video><div id="dbg"></div>
 <script>
-const room=new URLSearchParams(location.search).get('room')||'main';
-let ws,pc,q=Promise.resolve();
+const P=new URLSearchParams(location.search),room=P.get('room')||'main';
+/* Tampon anti-saccades (ms). 0 = latence minimale mais l'image saccade au moindre aléa du Wi-Fi.
+   150 ms par défaut. Modifiable : obs.html?delay=80 (plus réactif) ou ?delay=300 (plus fluide). */
+const DELAY=Math.max(0,+(P.get('delay')||150));
+let ws,pc,q=Promise.resolve(),prev;
 const sj=o=>ws.send(JSON.stringify(o));
 async function handle(m){
   if(m.type==='offer'){
     if(pc)pc.close();
     pc=new RTCPeerConnection({iceServers:[]});
-    pc.ontrack=e=>{try{e.receiver.jitterBufferTarget=0}catch{}try{e.receiver.playoutDelayHint=0}catch{}v.srcObject=e.streams[0]};
+    pc.ontrack=e=>{try{e.receiver.jitterBufferTarget=DELAY}catch{}try{e.receiver.playoutDelayHint=DELAY/1000}catch{}v.srcObject=e.streams[0]};
     pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
     await pc.setRemoteDescription({type:'offer',sdp:m.sdp});
     const a=await pc.createAnswer();await pc.setLocalDescription(a);sj({type:'answer',sdp:a.sdp});
@@ -23,4 +27,12 @@ function connect(){
   ws.onmessage=e=>{q=q.then(()=>handle(JSON.parse(e.data))).catch(console.error)};
 }
 connect();
+/* Diagnostic : obs.html?debug=1 affiche ce qu'OBS reçoit réellement */
+if(P.get('debug')){dbg.style.display='block';setInterval(async()=>{
+  if(!pc)return;let i;(await pc.getStats()).forEach(x=>{if(x.type==='inbound-rtp'&&x.kind==='video')i=x});
+  if(!i){dbg.textContent='Aucune vidéo reçue';return}
+  const dt=prev?(i.timestamp-prev.timestamp)/1000:1,dropped=prev?i.framesDropped-prev.framesDropped:0,
+  jb=i.jitterBufferEmittedCount?Math.round(i.jitterBufferDelay/i.jitterBufferEmittedCount*1000):0;
+  dbg.textContent='Reçu : '+i.frameWidth+'x'+i.frameHeight+' à '+Math.round(i.framesPerSecond||0)+' i/s\nImages perdues par OBS : '+dropped+' /s\nPaquets perdus : '+i.packetsLost+'\nTampon : '+jb+' ms   Gigue : '+Math.round((i.jitter||0)*1000)+' ms';
+  prev=i},1000)}
 </script>

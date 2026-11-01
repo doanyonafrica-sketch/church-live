@@ -1,122 +1,216 @@
 <!doctype html><html lang="fr"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0d1b2e"><title>Church Live</title>
+<meta name="theme-color" content="#140d12"><title>Church Live</title>
 <style>
-:root{--bg:#0d1b2e;--panel:#152842;--line:#243b5c;--text:#eaf0f7;--mute:#8fa3bc;--gold:#d4a84f;--live:#e5484d;--ok:#3ecf8e}
-*{box-sizing:border-box}html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr;padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom)}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 2px}
-.brand{font:700 20px Georgia,serif;letter-spacing:.3px}.brand small{display:block;font:12px "Segoe UI",system-ui,sans-serif;color:var(--mute);letter-spacing:0}
-#pill{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
+:root{color-scheme:dark;--bg:#140d12;--surf:#22161e;--surf2:#33232d;--line:rgba(244,238,227,.14);--text:#f4eee3;--mute:#b3a4ad;--live:#ff5a4e;--ok:#7bd88f;--warn:#f0b44c;--rail:104px;--dock:176px;
+--serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:system-ui,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:16px/1.4 var(--sans);overflow:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--warn);outline-offset:3px}
+svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+
+/* disposition : la scène en haut, les commandes dans le dock (en bas, ou à droite en paysage) */
+#app{position:fixed;inset:0;display:grid;grid-template-rows:minmax(0,1fr) auto;padding-top:env(safe-area-inset-top)}
+#stage{position:relative;background:#000;overflow:hidden;min-height:0}
+#v{width:100%;height:100%;object-fit:contain;display:block}
+#dock{display:flex;align-items:flex-start;justify-content:center;gap:22px;padding:16px 16px calc(14px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line)}
+@media (orientation:landscape){
+  #app{grid-template-rows:none;grid-template-columns:minmax(0,1fr) auto;padding-right:env(safe-area-inset-right)}
+  #dock{flex-direction:column;align-items:center;justify-content:center;gap:12px;width:var(--rail);padding:10px 8px;border-top:0;border-left:1px solid var(--line)}
+}
+
+/* écran d'accueil, avant la caméra */
+#idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;
+  background:radial-gradient(120% 90% at 50% 0%,#2a1823 0%,var(--bg) 70%)}
+#idle svg.mark{width:56px;height:56px;stroke-width:1.5;color:var(--text)}
+#idle h1{font:600 34px/1.1 var(--serif);margin:6px 0 0;letter-spacing:.2px}
+#idle p{margin:0;color:var(--mute);max-width:30ch}
+body.cam #idle{display:none}
+
+/* pastille d'état et mesures */
+#top{position:absolute;left:12px;top:12px;right:12px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
+#pill{display:inline-flex;align-items:center;gap:8px;background:rgba(20,13,18,.72);border:1px solid var(--line);border-radius:999px;padding:6px 14px 6px 11px;font-weight:600;font-size:14px;backdrop-filter:blur(6px)}
 #dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}
+body.wait #dot{background:var(--warn)}
 body.live #dot{background:var(--live);animation:p 1.4s infinite}body.live #pill{border-color:var(--live)}
-@keyframes p{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){body.live #dot{animation:none}}
-main{display:grid;gap:14px;min-height:0;grid-template-rows:minmax(0,1fr) auto}
-@media(orientation:landscape) and (min-width:700px){main{grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);grid-template-rows:1fr}}
-.stage{position:relative;background:#000;border-radius:16px;overflow:hidden;min-height:180px}
-video{width:100%;height:100%;object-fit:cover}
-.chips{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;flex-wrap:wrap}
-.chips span{background:rgba(13,27,46,.78);border-radius:8px;padding:4px 9px;font-size:13px;font-variant-numeric:tabular-nums}
-#vu{position:absolute;right:10px;top:10px;bottom:10px;width:7px;border-radius:4px;background:rgba(255,255,255,.15);overflow:hidden}
-#vu i{position:absolute;bottom:0;left:0;right:0;height:0;background:var(--ok)}
-.panel{display:flex;flex-direction:column;gap:14px;overflow:auto;padding-bottom:10px}
-#msg{color:var(--mute);min-height:20px;font-size:14px}
-.row{display:flex;align-items:center;justify-content:center;gap:22px}
-button{font:inherit;color:var(--text);border:0;cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-.round{width:56px;height:56px;border-radius:50%;background:var(--panel);border:1px solid var(--line);font-size:12px;display:grid;place-items:center}
-.round.on{background:var(--gold);color:#1a1405}
-#go{width:92px;height:92px;border-radius:50%;background:var(--gold);color:#1a1405;font-weight:700;font-size:15px;border:5px solid rgba(212,168,79,.35)}
-body.live #go{background:var(--live);color:#fff;border-color:rgba(229,72,77,.35)}
-details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
-summary{padding:12px 0;font-weight:600;cursor:pointer}
-label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
-input,select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:16px}
-input[type=range]{padding:0}
-#fx{display:none}#fx.show{display:block}
-#upd:empty{display:none}#upd a{display:block;background:var(--gold);color:#1a1405;font-weight:700;text-align:center;border-radius:12px;padding:12px;text-decoration:none}
-#stats{color:var(--mute);font-size:13px;text-align:center}
+@keyframes p{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){body.live #dot{animation:none}}
+#clock{font:600 40px/1 var(--serif);font-variant-numeric:tabular-nums;text-shadow:0 1px 8px rgba(0,0,0,.7);display:none}
+body.live #clock{display:block}
+#chips{display:none;gap:6px;flex-wrap:wrap}
+body.cam #chips{display:flex}
+#chips span{background:rgba(20,13,18,.72);border-radius:8px;padding:3px 9px;font-size:13px;font-variant-numeric:tabular-nums}
+#chips span:empty{display:none}
+#alert{display:none;background:var(--warn);color:#21160a;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;max-width:46ch}
+#alert.show{display:block}
+#vu{position:absolute;right:10px;top:12px;bottom:12px;width:6px;border-radius:3px;background:rgba(255,255,255,.14);overflow:hidden;display:none}
+body.cam #vu{display:block}
+#vui{position:absolute;bottom:0;left:0;right:0;height:0;background:var(--ok);transition:height .06s linear}
+#msg{position:absolute;left:12px;right:28px;bottom:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+#msg span{background:rgba(20,13,18,.78);border-radius:10px;padding:7px 12px;font-size:14px;max-width:46ch}
+#zoomwrap{display:none;width:min(320px,70%);background:rgba(20,13,18,.72);border-radius:999px;padding:6px 14px;align-items:center;gap:10px;font-size:13px}
+#zoomwrap.show{display:flex}
+#zoom{flex:1;accent-color:var(--text)}
+#upd:empty{display:none}
+#upd a{display:block;background:var(--text);color:var(--bg);font-weight:700;border-radius:10px;padding:9px 14px;text-decoration:none;font-size:14px}
+
+/* commandes */
+.ctl{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--mute);min-width:60px}
+.ctl i{width:52px;height:52px;border-radius:50%;background:var(--surf);border:1px solid var(--line);display:grid;place-items:center;color:var(--text);font-style:normal}
+.ctl.on i{background:var(--text);color:var(--bg)}
+.ctl.on{color:var(--text)}
+#torch{display:none}#torch.show{display:flex}
+.mic-off{display:none}#mute.on .mic-on{display:none}#mute.on .mic-off{display:block}
+#goctl{min-width:84px;color:var(--text);font-weight:600;font-size:13px}
+#go{width:84px;height:84px;border-radius:50%;border:3px solid var(--text);display:grid;place-items:center;
+  box-shadow:0 0 0 calc(var(--lv,0)*12px) rgba(244,238,227,.22);transition:box-shadow .08s linear}
+#go b{width:62px;height:62px;border-radius:50%;background:var(--live);transition:border-radius .2s,width .2s,height .2s}
+body.run #go b{width:30px;height:30px;border-radius:8px}
+@media (orientation:landscape){.ctl{font-size:0;gap:0;min-width:0}.ctl i{width:44px;height:44px}#goctl{order:-1;font-size:12px;gap:4px}#go{width:72px;height:72px}#go b{width:50px;height:50px}body.run #go b{width:24px;height:24px}#dock{overflow-y:auto}}
+
+/* réglages */
+dialog{width:min(440px,calc(100% - 24px));max-height:calc(100% - 24px);margin:auto;border:1px solid var(--line);border-radius:18px;background:var(--surf);color:var(--text);padding:0;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.sh{padding:18px 18px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.sh h2{font:600 22px var(--serif);margin:0}
+.sh button{color:var(--text);font-weight:600;padding:6px 4px}
+.fld{padding:8px 18px}
+label{display:block;font-size:14px;font-weight:600;margin-bottom:5px}
+.hint{font-size:13px;color:var(--mute);margin:5px 0 0}
+input[type=text],select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:16px var(--sans)}
+#diag{margin:8px 18px 4px;background:var(--bg);border-radius:12px;padding:12px;font-size:14px;color:var(--mute)}
+#ver{padding:8px 18px 16px;font-size:12px;color:var(--mute)}
 </style>
-<header><div class="brand">Church Live<small>Diffusion vers OBS</small></div><div id="pill"><span id="dot"></span><span id="pt">Hors ligne</span></div></header>
-<main>
-<div class="stage"><video id="v" autoplay muted playsinline></video><div id="vu"><i id="vui"></i></div>
-<div class="chips"><span id="c1">Caméra éteinte</span><span id="c2"></span><span id="c3"></span></div></div>
-<div class="panel">
-<div id="upd"></div>
-<div id="msg">Saisissez l'adresse du PC dans les réglages, puis démarrez le direct.</div>
-<div class="row"><button class="round" id="flip">Caméra</button><button id="go">Démarrer</button><button class="round" id="mute">Micro</button></div>
-<div id="fx" class="row"><button class="round" id="torch">Flash</button><input id="zoom" type="range" min="1" max="1" step="0.1" value="1" style="flex:1" aria-label="Zoom"></div>
-<div id="stats"></div>
-<details id="set"><summary>Réglages</summary>
-<label for="addr">Adresse du PC</label><input id="addr" inputmode="url" autocapitalize="off" placeholder="192.168.1.10:3000">
-<label for="q">Qualité vidéo</label><select id="q"><option value="720">HD 720p, recommandé</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></details>
-</div></main>
+<body><div id="app">
+<div id="stage">
+  <video id="v" autoplay muted playsinline></video>
+  <div id="idle">
+    <svg class="mark" viewBox="0 0 24 24"><path d="M12 2.5v19M6 8.5h12"/><circle cx="12" cy="8.5" r="2.2" fill="#ff5a4e" stroke="none"/></svg>
+    <h1>Church Live</h1><p>Le téléphone devient la caméra d'OBS. Touchez le bouton rouge pour démarrer.</p>
+  </div>
+  <div id="top"><div id="pill"><span id="dot"></span><span id="pt">Hors ligne</span></div>
+    <div id="clock">00:00:00</div>
+    <div id="chips"><span id="c2"></span><span id="c3"></span><span id="c4"></span><span id="c5"></span></div>
+    <div id="alert" role="status"></div></div>
+  <div id="vu"><i id="vui"></i></div>
+  <div id="msg"><div id="upd"></div><div id="zoomwrap"><span>Zoom</span><input id="zoom" type="range" min="1" max="1" step="0.1" value="1" aria-label="Zoom"></div><span id="m"></span></div>
+</div>
+<div id="dock">
+  <button class="ctl" id="gear"><i><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></i>Réglages</button>
+  <button class="ctl" id="flip"><i><svg viewBox="0 0 24 24"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/><circle cx="12" cy="12" r="3"/><path d="m18 22-3-3 3-3M6 2l3 3-3 3"/></svg></i>Caméra</button>
+  <div class="ctl" id="goctl"><button id="go" aria-label="Démarrer le direct"><b></b></button><span id="gol">Démarrer</span></div>
+  <button class="ctl" id="mute"><i><svg class="mic-on" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg><svg class="mic-off" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3ZM19 10v2a7 7 0 0 1-14 0v-2M12 19v3M2 2l20 20"/></svg></i><span id="mt">Micro</span></button>
+  <button class="ctl" id="torch"><i><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></i>Flash</button>
+</div></div>
+
+<dialog id="sheet">
+  <div class="sh"><h2>Réglages</h2><button id="close">Fermer</button></div>
+  <div class="fld"><label for="addr">Adresse du PC</label><input type="text" id="addr" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="192.168.1.10:3000"><p class="hint">Elle s'affiche dans la fenêtre Church Live sur le PC.</p></div>
+  <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
+  <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
+  <div id="diag">Le diagnostic apparaît pendant le direct.</div>
+  <div id="ver"></div>
+</dialog>
+
 <script>
 const VERSION='dev';
-const $=id=>document.getElementById(id),BR={480:1.5e6,720:4e6,1080:6e6};
-let ws,pc,stream,facing='environment',running=false,wl,t0,last,ac,an;
+const $=id=>document.getElementById(id),BR={480:1.5e6,720:4e6,1080:7e6};
+let ws,pc,stream,facing='environment',running=false,wl,t0,last,ac,an,mt,rt,bad=0,muted=false;
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
-$('q').value=localStorage.q||'720';
-if(!$('addr').value)$('set').open=true;
+$('q').value=localStorage.q||'720';$('codec').value=localStorage.codec||'auto';
+$('ver').textContent=VERSION==='dev'?'Version de développement':'Church Live '+VERSION;
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
-const msg=t=>$('msg').textContent=t,pill=t=>$('pt').textContent=t;
+const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
+const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
+const openSet=()=>$('sheet').showModal();
+['addr','q','codec'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
+$('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
+if(!$('addr').value)msg('Saisissez l\'adresse du PC dans les réglages.');
+
 async function cam(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
   const h=+$('q').value;
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-  $('v').srcObject=stream;$('c1').textContent='Caméra active';
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30,max:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
   const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};
-  $('fx').classList.toggle('show',!!(c.zoom||c.torch));$('torch').style.display=c.torch?'':'none';$('zoom').style.display=c.zoom?'':'none';
+  try{vt.contentHint='motion'}catch{}
+  if(muted)stream.getAudioTracks().forEach(a=>a.enabled=false);
+  $('v').srcObject=stream;document.body.classList.add('cam');
+  $('torch').classList.toggle('show',!!c.torch);$('zoomwrap').classList.toggle('show',!!c.zoom);
   if(c.zoom){$('zoom').min=c.zoom.min;$('zoom').max=c.zoom.max;$('zoom').step=c.zoom.step||.1;$('zoom').value=c.zoom.min}
   meter();
 }
+$('v').onresize=()=>{const v=$('v');if(v.videoHeight>v.videoWidth&&running)alertBox('Tenez le téléphone à l\'horizontale pour obtenir une image 16:9 dans OBS.')};
 function meter(){
+  clearInterval(mt);
   try{ac&&ac.close();ac=new AudioContext();an=ac.createAnalyser();an.fftSize=256;ac.createMediaStreamSource(stream).connect(an);
-  const d=new Uint8Array(an.frequencyBinCount);(function f(){if(!an)return;an.getByteTimeDomainData(d);let m=0;for(const x of d)m=Math.max(m,Math.abs(x-128));
-  $('vui').style.height=Math.min(100,m/90*100)+'%';requestAnimationFrame(f)})()}catch{}
+  const d=new Uint8Array(an.frequencyBinCount);
+  mt=setInterval(()=>{an.getByteTimeDomainData(d);let m=0;for(const x of d)m=Math.max(m,Math.abs(x-128));const l=Math.min(1,m/90);
+    $('vui').style.height=l*100+'%';$('go').style.setProperty('--lv',running?l.toFixed(2):0)},70)}catch{}
 }
 function connect(){
   if(!running)return;
   ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
-  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS');msg('Connecté au PC. Ouvrez la source dans OBS.')};
-  ws.onclose=()=>{if(running){pill('Reconnexion…');msg('Connexion au PC perdue. Nouvelle tentative…');setTimeout(connect,2000)}};
+  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  ws.onclose=()=>{if(running){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…');setTimeout(connect,2000)}};
   ws.onmessage=async e=>{const m=JSON.parse(e.data);
     if(m.type==='viewer-joined')await offer();
     else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
     else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
-    else if(m.type==='viewer-left'){if(pc)pc.close();pill('En attente d\'OBS');msg('OBS s\'est déconnecté.')}};
+    else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}};
 }
 async function offer(){
   if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
   pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected'){pill('EN DIRECT');msg('Le direct est reçu par OBS.');document.body.classList.add('live');t0=t0||Date.now()}};
+  pc.onconnectionstatechange=()=>{const s=pc.connectionState;
+    if(s==='connected'){pill('EN DIRECT');msg('');document.body.classList.add('live');t0=t0||Date.now()}
+    else if(s==='failed'||s==='disconnected'){document.body.classList.remove('live');pill('Reconnexion…','wait');clearTimeout(rt);
+      rt=setTimeout(()=>{if(running&&pc&&pc.connectionState!=='connected')offer()},2500)}};
   stream.getTracks().forEach(t=>pc.addTrack(t,stream));
-  const s=pc.getSenders().find(s=>s.track&&s.track.kind==='video'),p=s.getParameters();
+  const tr=pc.getTransceivers().find(t=>t.sender.track&&t.sender.track.kind==='video'),s=tr.sender,p=s.getParameters();
   if(!p.encodings||!p.encodings.length)p.encodings=[{}];
-  p.encodings[0].maxBitrate=BR[$('q').value];p.degradationPreference='maintain-framerate';
+  p.encodings[0].maxBitrate=BR[$('q').value];p.encodings[0].maxFramerate=30;p.encodings[0].priority='high';p.encodings[0].networkPriority='high';
+  p.degradationPreference='maintain-framerate';
   await s.setParameters(p).catch(()=>{});
+  const pref=$('codec').value;
+  if(pref!=='auto'){try{const all=RTCRtpSender.getCapabilities('video').codecs,w=pref==='h264'?/h264/i:/vp8/i;
+    tr.setCodecPreferences([...all.filter(c=>w.test(c.mimeType)),...all.filter(c=>!w.test(c.mimeType))])}catch{}}
   const o=await pc.createOffer();await pc.setLocalDescription(o);sj({type:'offer',sdp:o.sdp});
+}
+function diagnose(fps,lim,loss){
+  if(lim==='cpu')return 'Le téléphone est surchargé. Choisissez 480p ou la compression H.264 dans les réglages, et laissez-le refroidir.';
+  if(lim==='bandwidth'||loss>.03)return 'Le réseau est instable. Rapprochez-vous du routeur (Wi-Fi 5 GHz) ou utilisez le partage de connexion USB.';
+  if(fps&&fps<24)return 'La caméra ne fournit que '+Math.round(fps)+' images par seconde : la lumière est insuffisante. Éclairez la scène.';
+  return '';
 }
 setInterval(async()=>{
   if(!pc||pc.connectionState!=='connected')return;
-  const r=await pc.getStats();let o,rtt;r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime});
+  const r=await pc.getStats();let o,rtt,rin;const codecs={};
+  r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;else if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime;else if(x.type==='codec')codecs[x.id]=x;else if(x.type==='remote-inbound-rtp'&&x.kind==='video')rin=x});
   if(!o)return;const now=Date.now(),kbps=last?Math.round((o.bytesSent-last.b)*8/(now-last.t)):0;last={b:o.bytesSent,t:now};
-  $('c2').textContent=(o.frameWidth||'?')+'×'+(o.frameHeight||'?')+' à '+Math.round(o.framesPerSecond||0)+' i/s';$('c3').textContent=(kbps/1000).toFixed(1)+' Mb/s';
+  const fps=o.framesPerSecond||0,cd=codecs[o.codecId];
+  $('c2').textContent=(o.frameWidth||'?')+'×'+(o.frameHeight||'?')+' à '+Math.round(fps)+' i/s';
+  $('c3').textContent=(kbps/1000).toFixed(1)+' Mb/s';
+  $('c4').textContent=cd?cd.mimeType.replace('video/',''):'';
+  $('c5').textContent=rtt?Math.round(rtt*1000)+' ms':'';
   const s=Math.floor((now-t0)/1000),pad=n=>String(n).padStart(2,'0');
-  $('stats').textContent='Durée '+pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60)+(rtt?'   Latence '+Math.round(rtt*1000)+' ms':'');
+  $('clock').textContent=pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60);
+  const d=diagnose(fps,o.qualityLimitationReason,rin?rin.fractionLost||0:0);
+  bad=d?bad+1:0;
+  if(bad>=3)alertBox(d);else if(!d){alertBox('');$('diag').textContent='Tout va bien : '+Math.round(fps)+' images par seconde, '+(kbps/1000).toFixed(1)+' Mb/s.'}
 },1000);
 $('go').onclick=async()=>{
-  if(running){running=false;ws&&ws.close();pc&&pc.close();stream&&stream.getTracks().forEach(t=>t.stop());wl&&wl.release();an=null;t0=last=null;
-    document.body.classList.remove('live');$('go').textContent='Démarrer';pill('Hors ligne');msg('Direct terminé.');$('c1').textContent='Caméra éteinte';$('c2').textContent=$('c3').textContent=$('stats').textContent='';return}
-  if(!$('addr').value.trim()){$('set').open=true;msg('Saisissez d\'abord l\'adresse du PC.');return}
+  if(running){running=false;clearTimeout(rt);clearInterval(mt);ws&&ws.close();pc&&pc.close();pc=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;wl&&wl.release();an=null;t0=last=null;bad=0;
+    document.body.classList.remove('live','run','cam','wait');$('v').srcObject=null;$('go').style.setProperty('--lv',0);$('go').setAttribute('aria-label','Démarrer le direct');$('gol').textContent='Démarrer';pill('Hors ligne');alertBox('');msg('Direct terminé.');$('clock').textContent='00:00:00';
+    $('c2').textContent=$('c3').textContent=$('c4').textContent=$('c5').textContent='';return}
+  if(!$('addr').value.trim()){openSet();return}
   if(!navigator.mediaDevices){msg('Caméra bloquée par le navigateur. Utilisez l\'application Church Live (APK).');return}
-  try{localStorage.addr=$('addr').value;localStorage.q=$('q').value;await cam();running=true;$('go').textContent='Terminer';$('set').open=false;pill('Connexion…');msg('Connexion au PC…');
+  try{await cam();running=true;document.body.classList.add('run');$('go').setAttribute('aria-label','Terminer le direct');$('gol').textContent='Terminer';pill('Connexion…','wait');msg('Connexion au PC…');
     try{wl=await navigator.wakeLock.request('screen')}catch{}connect()}
   catch(e){msg('Caméra ou micro refusé. Autorisez-les dans les réglages du téléphone. ('+e.name+')')}
 };
 $('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
   if(pc)for(const x of pc.getSenders()){const t=stream.getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}};
-$('mute').onclick=()=>{if(!stream)return;const a=stream.getAudioTracks()[0];a.enabled=!a.enabled;$('mute').classList.toggle('on',!a.enabled);$('mute').textContent=a.enabled?'Micro':'Muet'};
+$('mute').onclick=()=>{muted=!muted;if(stream)stream.getAudioTracks().forEach(a=>a.enabled=!muted);$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro'};
 $('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});$('torch').classList.toggle('on',on)};
 $('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value}]}).catch(()=>{});
 (async()=>{

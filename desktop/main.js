@@ -1,10 +1,11 @@
-const {app,BrowserWindow,dialog}=require('electron');
+const {app,BrowserWindow,dialog,Menu}=require('electron');
 const {createServer}=require('./server/server');
 app.whenReady().then(()=>{
   const srv=createServer();
   srv.on('error',e=>{dialog.showErrorBox('Church Live','Impossible de démarrer le serveur (port 3000 déjà utilisé ?) : '+e.message);app.quit()});
   srv.listen(3000,'0.0.0.0',()=>{
-    const w=new BrowserWindow({width:760,height:620,autoHideMenuBar:true,title:'Church Live'});
+    Menu.setApplicationMenu(null);
+    const w=new BrowserWindow({width:920,height:760,minWidth:720,minHeight:560,backgroundColor:'#140d12',autoHideMenuBar:true,title:'Church Live'});
     w.loadURL('http://localhost:3000/control.html');
     if(app.isPackaged){
       try{
