@@ -1,4 +1,4 @@
-<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Church Live</title>
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TPR Live</title>
 <style>
 :root{color-scheme:dark;--bg:#140d12;--surf:#22161e;--surf2:#2d1f28;--line:rgba(244,238,227,.13);--text:#f4eee3;--mute:#b3a4ad;--live:#ff5a4e;--ok:#7bd88f;--warn:#f0b44c;
 --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:"Segoe UI",system-ui,sans-serif}
@@ -7,7 +7,7 @@ body{margin:0;background:radial-gradient(110% 70% at 50% -10%,#2a1823 0%,var(--b
 button{font:inherit;cursor:pointer;border:0}
 button:focus-visible,summary:focus-visible{outline:2px solid var(--warn);outline-offset:3px}
 header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-header svg{width:40px;height:40px;fill:none;stroke:var(--text);stroke-width:1.5;stroke-linecap:round}
+header img{height:64px;width:auto}
 h1{font:600 30px/1.1 var(--serif);margin:0}
 header p{margin:2px 0 0;color:var(--mute);font-size:14px}
 #banner{border-radius:16px;padding:18px 22px;margin-bottom:18px;background:var(--surf);border:1px solid var(--line);display:flex;gap:14px;align-items:center}
@@ -35,8 +35,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 details ul{margin:0 0 12px;padding-left:20px;color:var(--mute)}details li{margin:6px 0}details b{color:var(--text);font-weight:600}
 code.i{font:13px Consolas,monospace;background:var(--bg);padding:1px 6px;border-radius:5px;color:var(--text)}
 </style>
-<header><svg viewBox="0 0 24 24"><path d="M12 2.5v19M6 8.5h12"/><circle cx="12" cy="8.5" r="2.2" fill="#ff5a4e" stroke="none"/></svg>
-<div><h1>Church Live</h1><p>Gardez cette fenêtre ouverte pendant le direct.</p></div></header>
+<header><img src="/logo.png" alt="Logo de l'église"><div><h1>TPR Live</h1><p>Tabernacle La Parole Révélée. Gardez cette fenêtre ouverte pendant le direct.</p></div></header>
 
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div></div>

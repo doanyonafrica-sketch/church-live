@@ -5,7 +5,7 @@ app.whenReady().then(()=>{
   srv.on('error',e=>{dialog.showErrorBox('Church Live','Impossible de démarrer le serveur (port 3000 déjà utilisé ?) : '+e.message);app.quit()});
   srv.listen(3000,'0.0.0.0',()=>{
     Menu.setApplicationMenu(null);
-    const w=new BrowserWindow({width:920,height:760,minWidth:720,minHeight:560,backgroundColor:'#140d12',autoHideMenuBar:true,title:'Church Live'});
+    const w=new BrowserWindow({width:920,height:760,minWidth:720,minHeight:560,backgroundColor:'#140d12',autoHideMenuBar:true,title:'TPR Live',icon:require('path').join(__dirname,'build','icon.png')});
     w.loadURL('http://localhost:3000/control.html');
     if(app.isPackaged){
       try{

@@ -21,6 +21,8 @@ jobs:
           cd mobile
           npm install
           npx cap add android
+          cp -r icons/res/. android/app/src/main/res/
+          sed -i 's#<activity #<activity android:screenOrientation="sensorLandscape" #' android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><application#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug

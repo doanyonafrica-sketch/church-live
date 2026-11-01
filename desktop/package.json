@@ -22,10 +22,12 @@
     "productName": "Church Live",
     "files": [
       "main.js",
+      "build/icon.png",
       "server/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.png"
     },
     "publish": {
       "provider": "github",
