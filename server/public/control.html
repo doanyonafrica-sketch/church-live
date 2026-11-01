@@ -1,12 +1,32 @@
 <!doctype html><html lang="fr"><meta charset="utf-8"><title>Church Live</title>
-<style>body{font-family:system-ui;background:#111;color:#eee;padding:24px}code{background:#222;padding:4px 8px;border-radius:6px;font-size:18px}h2{margin-top:28px}</style>
-<h1>Church Live : serveur actif</h1>
-<h2>1. Dans OBS</h2><p>Ajouter une <b>Source Navigateur</b> avec l'adresse :</p><p><code id="obs"></code></p>
-<h2>2. Dans l'application du téléphone, saisir :</h2><div id="ips"></div>
-<h2>État</h2><p id="s"></p>
+<style>
+:root{--bg:#0d1b2e;--panel:#152842;--line:#243b5c;--text:#eaf0f7;--mute:#8fa3bc;--gold:#d4a84f;--ok:#3ecf8e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,sans-serif;padding:26px 30px}
+h1{font:700 26px Georgia,serif;margin:0}p.sub{margin:2px 0 22px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.card b{display:block;color:var(--mute);font-weight:500;font-size:13px}.st{font-size:18px;font-weight:600;margin-top:4px;display:flex;align-items:center;gap:8px}
+.d{width:10px;height:10px;border-radius:50%;background:var(--mute)}.on .d{background:var(--ok)}
+h2{font-size:16px;margin:20px 0 8px}
+.addr{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.addr code{flex:1;font:600 17px Consolas,monospace;overflow:auto}
+button{background:var(--gold);color:#1a1405;border:0;border-radius:8px;padding:8px 14px;font:600 14px inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+ol{color:var(--mute);padding-left:20px;margin:6px 0}
+</style>
+<h1>Church Live</h1><p class="sub">Le serveur est en marche. Gardez cette fenêtre ouverte pendant le direct.</p>
+<div class="grid"><div class="card" id="p"><b>Téléphone</b><div class="st"><span class="d"></span><span id="pt">En attente</span></div></div>
+<div class="card" id="o"><b>OBS</b><div class="st"><span class="d"></span><span id="ot">En attente</span></div></div></div>
+<h2>Adresse à saisir dans l'application du téléphone</h2><div id="ips"></div>
+<h2>Adresse de la Source Navigateur dans OBS</h2><div class="addr"><code id="obs"></code><button data-c="obs">Copier</button></div>
+<h2>Démarrage rapide</h2><ol><li>Dans OBS, ajoutez une Source Navigateur avec l'adresse ci-dessus.</li><li>Sur le téléphone, saisissez l'adresse du PC puis touchez Démarrer.</li><li>Le téléphone passe en EN DIRECT quand OBS reçoit l'image.</li></ol>
 <script>
-async function r(){const i=await (await fetch('/info')).json();
-obs.textContent=i.obs;ips.innerHTML=i.addresses.map(a=>'<p><code>'+a+'</code></p>').join('')||'Aucun réseau détecté';
-s.textContent='Téléphone connecté : '+(i.publishers?'oui':'non')+' | OBS connecté : '+(i.viewers?'oui':'non');}
+const $=id=>document.getElementById(id);
+function cp(t,b){navigator.clipboard.writeText(t);const x=b.textContent;b.textContent='Copié';setTimeout(()=>b.textContent=x,1200)}
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(b)cp(b.dataset.t,b);if(e.target.dataset.c)cp($(e.target.dataset.c).textContent,e.target)});
+async function r(){const i=await (await fetch('/info')).json();$('obs').textContent=i.obs;
+$('ips').innerHTML=i.addresses.map(a=>'<div class="addr"><code>'+a+'</code><button data-t="'+a+'">Copier</button></div>').join('')||'<div class="card">Aucun réseau détecté. Connectez le PC au Wi-Fi ou activez le partage USB du téléphone.</div>';
+$('p').classList.toggle('on',!!i.publishers);$('pt').textContent=i.publishers?'Connecté':'En attente';
+$('o').classList.toggle('on',!!i.viewers);$('ot').textContent=i.viewers?'Connecté':'En attente'}
 r();setInterval(r,2000);
 </script>

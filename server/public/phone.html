@@ -1,37 +1,95 @@
-<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Live</title>
-<style>body{font-family:system-ui;margin:0;background:#111;color:#eee;padding:12px}video{width:100%;max-height:42vh;background:#000;border-radius:8px}input,select,button{width:100%;box-sizing:border-box;padding:12px;margin:4px 0;font-size:16px;border-radius:8px;border:0}button{background:#2d6cdf;color:#fff}#st{padding:8px 0;font-weight:600}</style>
-<video id="v" autoplay muted playsinline></video>
-<div id="st">Prêt</div>
-<input id="addr" placeholder="Adresse du PC, ex : 192.168.1.10:3000">
-<select id="q"><option value="720">720p (recommandé)</option><option value="1080">1080p</option></select>
-<button id="go">Démarrer le direct</button><button id="flip" style="background:#444">Changer de caméra</button>
+<!doctype html><html lang="fr"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1b2e"><title>Church Live</title>
+<style>
+:root{--bg:#0d1b2e;--panel:#152842;--line:#243b5c;--text:#eaf0f7;--mute:#8fa3bc;--gold:#d4a84f;--live:#e5484d;--ok:#3ecf8e}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",system-ui,sans-serif;display:grid;grid-template-rows:auto 1fr;padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 2px}
+.brand{font:700 20px Georgia,serif;letter-spacing:.3px}.brand small{display:block;font:12px "Segoe UI",system-ui,sans-serif;color:var(--mute);letter-spacing:0}
+#pill{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}
+body.live #dot{background:var(--live);animation:p 1.4s infinite}body.live #pill{border-color:var(--live)}
+@keyframes p{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){body.live #dot{animation:none}}
+main{display:grid;gap:14px;min-height:0;grid-template-rows:minmax(0,1fr) auto}
+@media(orientation:landscape) and (min-width:700px){main{grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);grid-template-rows:1fr}}
+.stage{position:relative;background:#000;border-radius:16px;overflow:hidden;min-height:180px}
+video{width:100%;height:100%;object-fit:cover}
+.chips{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;flex-wrap:wrap}
+.chips span{background:rgba(13,27,46,.78);border-radius:8px;padding:4px 9px;font-size:13px;font-variant-numeric:tabular-nums}
+#vu{position:absolute;right:10px;top:10px;bottom:10px;width:7px;border-radius:4px;background:rgba(255,255,255,.15);overflow:hidden}
+#vu i{position:absolute;bottom:0;left:0;right:0;height:0;background:var(--ok)}
+.panel{display:flex;flex-direction:column;gap:14px;overflow:auto;padding-bottom:10px}
+#msg{color:var(--mute);min-height:20px;font-size:14px}
+.row{display:flex;align-items:center;justify-content:center;gap:22px}
+button{font:inherit;color:var(--text);border:0;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.round{width:56px;height:56px;border-radius:50%;background:var(--panel);border:1px solid var(--line);font-size:12px;display:grid;place-items:center}
+.round.on{background:var(--gold);color:#1a1405}
+#go{width:92px;height:92px;border-radius:50%;background:var(--gold);color:#1a1405;font-weight:700;font-size:15px;border:5px solid rgba(212,168,79,.35)}
+body.live #go{background:var(--live);color:#fff;border-color:rgba(229,72,77,.35)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+summary{padding:12px 0;font-weight:600;cursor:pointer}
+label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
+input,select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:16px}
+input[type=range]{padding:0}
+#fx{display:none}#fx.show{display:block}
+#upd:empty{display:none}#upd a{display:block;background:var(--gold);color:#1a1405;font-weight:700;text-align:center;border-radius:12px;padding:12px;text-decoration:none}
+#stats{color:var(--mute);font-size:13px;text-align:center}
+</style>
+<header><div class="brand">Church Live<small>Diffusion vers OBS</small></div><div id="pill"><span id="dot"></span><span id="pt">Hors ligne</span></div></header>
+<main>
+<div class="stage"><video id="v" autoplay muted playsinline></video><div id="vu"><i id="vui"></i></div>
+<div class="chips"><span id="c1">Caméra éteinte</span><span id="c2"></span><span id="c3"></span></div></div>
+<div class="panel">
+<div id="upd"></div>
+<div id="msg">Saisissez l'adresse du PC dans les réglages, puis démarrez le direct.</div>
+<div class="row"><button class="round" id="flip">Caméra</button><button id="go">Démarrer</button><button class="round" id="mute">Micro</button></div>
+<div id="fx" class="row"><button class="round" id="torch">Flash</button><input id="zoom" type="range" min="1" max="1" step="0.1" value="1" style="flex:1" aria-label="Zoom"></div>
+<div id="stats"></div>
+<details id="set"><summary>Réglages</summary>
+<label for="addr">Adresse du PC</label><input id="addr" inputmode="url" autocapitalize="off" placeholder="192.168.1.10:3000">
+<label for="q">Qualité vidéo</label><select id="q"><option value="720">HD 720p, recommandé</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></details>
+</div></main>
 <script>
-const $=id=>document.getElementById(id),BR={720:4e6,1080:6e6};
-let ws,pc,stream,facing='environment',running=false,wl;
+const VERSION='dev';
+const $=id=>document.getElementById(id),BR={480:1.5e6,720:4e6,1080:6e6};
+let ws,pc,stream,facing='environment',running=false,wl,t0,last,ac,an;
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
-const say=t=>$('st').textContent=t,sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
+$('q').value=localStorage.q||'720';
+if(!$('addr').value)$('set').open=true;
+const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
+const msg=t=>$('msg').textContent=t,pill=t=>$('pt').textContent=t;
 async function cam(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
   const h=+$('q').value;
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-  $('v').srcObject=stream;
+  $('v').srcObject=stream;$('c1').textContent='Caméra active';
+  const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};
+  $('fx').classList.toggle('show',!!(c.zoom||c.torch));$('torch').style.display=c.torch?'':'none';$('zoom').style.display=c.zoom?'':'none';
+  if(c.zoom){$('zoom').min=c.zoom.min;$('zoom').max=c.zoom.max;$('zoom').step=c.zoom.step||.1;$('zoom').value=c.zoom.min}
+  meter();
+}
+function meter(){
+  try{ac&&ac.close();ac=new AudioContext();an=ac.createAnalyser();an.fftSize=256;ac.createMediaStreamSource(stream).connect(an);
+  const d=new Uint8Array(an.frequencyBinCount);(function f(){if(!an)return;an.getByteTimeDomainData(d);let m=0;for(const x of d)m=Math.max(m,Math.abs(x-128));
+  $('vui').style.height=Math.min(100,m/90*100)+'%';requestAnimationFrame(f)})()}catch{}
 }
 function connect(){
   if(!running)return;
   ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
-  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});say("Connecté au PC, en attente d'OBS…")};
-  ws.onclose=()=>{if(running){say('Connexion perdue, nouvelle tentative…');setTimeout(connect,2000)}};
+  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  ws.onclose=()=>{if(running){pill('Reconnexion…');msg('Connexion au PC perdue. Nouvelle tentative…');setTimeout(connect,2000)}};
   ws.onmessage=async e=>{const m=JSON.parse(e.data);
     if(m.type==='viewer-joined')await offer();
     else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
     else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
-    else if(m.type==='viewer-left'){if(pc)pc.close();say('OBS déconnecté')}};
+    else if(m.type==='viewer-left'){if(pc)pc.close();pill('En attente d\'OBS');msg('OBS s\'est déconnecté.')}};
 }
 async function offer(){
   if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
   pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected')say('EN DIRECT vers OBS')};
+  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected'){pill('EN DIRECT');msg('Le direct est reçu par OBS.');document.body.classList.add('live');t0=t0||Date.now()}};
   stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   const s=pc.getSenders().find(s=>s.track&&s.track.kind==='video'),p=s.getParameters();
   if(!p.encodings||!p.encodings.length)p.encodings=[{}];
@@ -39,16 +97,35 @@ async function offer(){
   await s.setParameters(p).catch(()=>{});
   const o=await pc.createOffer();await pc.setLocalDescription(o);sj({type:'offer',sdp:o.sdp});
 }
+setInterval(async()=>{
+  if(!pc||pc.connectionState!=='connected')return;
+  const r=await pc.getStats();let o,rtt;r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime});
+  if(!o)return;const now=Date.now(),kbps=last?Math.round((o.bytesSent-last.b)*8/(now-last.t)):0;last={b:o.bytesSent,t:now};
+  $('c2').textContent=(o.frameWidth||'?')+'×'+(o.frameHeight||'?')+' à '+Math.round(o.framesPerSecond||0)+' i/s';$('c3').textContent=(kbps/1000).toFixed(1)+' Mb/s';
+  const s=Math.floor((now-t0)/1000),pad=n=>String(n).padStart(2,'0');
+  $('stats').textContent='Durée '+pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60)+(rtt?'   Latence '+Math.round(rtt*1000)+' ms':'');
+},1000);
 $('go').onclick=async()=>{
-  if(running){running=false;ws&&ws.close();pc&&pc.close();stream&&stream.getTracks().forEach(t=>t.stop());wl&&wl.release();$('go').textContent='Démarrer le direct';say('Arrêté');return}
-  if(!navigator.mediaDevices){say("Caméra bloquée : utilisez l'application Church Live (APK)");return}
-  try{localStorage.addr=$('addr').value;await cam();running=true;$('go').textContent='Arrêter le direct';
-    try{wl=await navigator.wakeLock.request('screen')}catch{}
-    connect();
-  }catch(e){say('Erreur caméra : '+e.message)}
+  if(running){running=false;ws&&ws.close();pc&&pc.close();stream&&stream.getTracks().forEach(t=>t.stop());wl&&wl.release();an=null;t0=last=null;
+    document.body.classList.remove('live');$('go').textContent='Démarrer';pill('Hors ligne');msg('Direct terminé.');$('c1').textContent='Caméra éteinte';$('c2').textContent=$('c3').textContent=$('stats').textContent='';return}
+  if(!$('addr').value.trim()){$('set').open=true;msg('Saisissez d\'abord l\'adresse du PC.');return}
+  if(!navigator.mediaDevices){msg('Caméra bloquée par le navigateur. Utilisez l\'application Church Live (APK).');return}
+  try{localStorage.addr=$('addr').value;localStorage.q=$('q').value;await cam();running=true;$('go').textContent='Terminer';$('set').open=false;pill('Connexion…');msg('Connexion au PC…');
+    try{wl=await navigator.wakeLock.request('screen')}catch{}connect()}
+  catch(e){msg('Caméra ou micro refusé. Autorisez-les dans les réglages du téléphone. ('+e.name+')')}
 };
-$('flip').onclick=async()=>{
-  facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
-  if(pc)for(const x of pc.getSenders()){const t=stream.getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}
-};
+$('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
+  if(pc)for(const x of pc.getSenders()){const t=stream.getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}};
+$('mute').onclick=()=>{if(!stream)return;const a=stream.getAudioTracks()[0];a.enabled=!a.enabled;$('mute').classList.toggle('on',!a.enabled);$('mute').textContent=a.enabled?'Micro':'Muet'};
+$('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});$('torch').classList.toggle('on',on)};
+$('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value}]}).catch(()=>{});
+(async()=>{
+  if(VERSION==='dev')return;
+  try{
+    const j=await (await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest')).json();
+    const v=(j.tag_name||'').replace(/^v/,''),a=(j.assets||[]).find(x=>x.name==='church-live.apk');
+    const gt=(x,y)=>{x=x.split('.').map(Number);y=y.split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
+    if(a&&gt(v,VERSION)){const l=document.createElement('a');l.href=a.browser_download_url;l.target='_blank';l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';$('upd').appendChild(l)}
+  }catch{}
+})();
 </script>

@@ -16,3 +16,10 @@ Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » 
 
 ## Développement
 `cd server && npm install && npm test` ; `npm start` pour lancer le serveur seul.
+
+## Publier une nouvelle version (mises à jour automatiques)
+1. `git add . && git commit -m "description" && git push`
+2. `git tag v1.0.1 && git push origin v1.0.1` (numéro supérieur au précédent)
+3. GitHub compile et publie une **Release** avec l'installeur Windows et `church-live.apk`.
+- **PC Windows** : l'application détecte la nouvelle version au démarrage, la télécharge et propose de redémarrer.
+- **Téléphone** : l'application affiche « Nouvelle version disponible » ; un appui télécharge l'APK, puis on l'installe (Android n'autorise pas l'installation silencieuse hors Play Store).

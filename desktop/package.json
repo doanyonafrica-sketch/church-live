@@ -1,5 +1,37 @@
-{"name":"church-live-desktop","version":"1.0.0","description":"Church Live - serveur pour OBS","author":"Doanyon Africa","main":"main.js",
-"dependencies":{"express":"^4.19.2","ws":"^8.18.0"},
-"devDependencies":{"electron":"^31.0.0","electron-builder":"^24.13.3"},
-"scripts":{"start":"electron .","dist":"electron-builder --win --publish never"},
-"build":{"appId":"africa.doanyon.churchlive.desktop","productName":"Church Live","files":["main.js","server/**/*"],"win":{"target":"nsis"}}}
+{
+  "name": "church-live-desktop",
+  "version": "1.0.0",
+  "description": "Church Live - serveur pour OBS",
+  "author": "Doanyon Africa",
+  "main": "main.js",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "africa.doanyon.churchlive.desktop",
+    "productName": "Church Live",
+    "files": [
+      "main.js",
+      "server/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "doanyonafrica-sketch",
+      "repo": "church-live",
+      "releaseType": "release"
+    }
+  }
+}
