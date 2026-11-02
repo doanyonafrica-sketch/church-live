@@ -3,6 +3,8 @@
 - `mobile/` : enveloppe Capacitor → APK (compilé par GitHub Actions)
 - `desktop/` : enveloppe Electron → installeur Windows (compilé par GitHub Actions)
 - `android-native/` : version Android native (secours, optionnelle)
+- `mobile/signing/` : clé de signature fixe de l'APK (nécessaire pour que les mises à jour s'installent par-dessus)
+- `mobile/patch/` : `MainActivity` qui garde le Wi-Fi en haute performance pendant le direct
 
 ## Obtenir les applications
 Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » → télécharger l'artefact (`church-live-apk`, `church-live-windows`).
@@ -23,3 +25,7 @@ Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » 
 3. GitHub compile et publie une **Release** avec l'installeur Windows et `church-live.apk`.
 - **PC Windows** : l'application détecte la nouvelle version au démarrage, la télécharge et propose de redémarrer.
 - **Téléphone** : l'application affiche « Nouvelle version disponible » ; un appui télécharge l'APK, puis on l'installe (Android n'autorise pas l'installation silencieuse hors Play Store).
+
+
+## Important : première installation après cette correction
+L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.

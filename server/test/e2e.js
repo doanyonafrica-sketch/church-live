@@ -4,7 +4,7 @@ const {RTCPeerConnection,nonstandard:{RTCVideoSource,RTCVideoSink}}=require('@ro
 const open=(port,role,room='t')=>new Promise(r=>{const w=new WebSocket('ws://127.0.0.1:'+port+'/ws');w.q=[];w.on('message',d=>{const m=JSON.parse(d);w.q.push(m);w.h&&w.h(m)});w.on('open',()=>{w.send(JSON.stringify({type:'join',role,room}));r(w)})});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
-  const srv=createServer();await new Promise(r=>srv.listen(0,r));const port=srv.address().port;
+  const srv=createServer({grace:300});await new Promise(r=>srv.listen(0,r));const port=srv.address().port;
   let pub=await open(port,'publisher'),view=await open(port,'viewer'),other=await open(port,'viewer','autre');
   await wait(100);
   assert(pub.q.some(m=>m.type==='viewer-joined'),'viewer-joined reçu');
@@ -12,9 +12,19 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   pub.send(JSON.stringify({type:'offer',sdp:'x'}));await wait(100);
   assert(view.q.some(m=>m.type==='offer'),'offre relayée');
   view.close();await wait(100);
-  assert(pub.q.some(m=>m.type==='viewer-left'),'viewer-left reçu');
+  assert(!pub.q.some(m=>m.type==='viewer-left'),'départ non annoncé pendant le délai de grâce');
+  await wait(500);
+  assert(pub.q.some(m=>m.type==='viewer-left'),'viewer-left reçu après le délai de grâce');
+  /* coupure brève : le téléphone revient avant la fin du délai, OBS ne voit rien */
+  const view2=await open(port,'viewer');view2.send(JSON.stringify({type:'active',value:true}));await wait(100);
+  pub.q.length=0;view2.q.length=0;
+  pub.close();await wait(100);
+  const pub2=await open(port,'publisher');await wait(100);
+  assert(!view2.q.some(m=>m.type==='publisher-left'),'OBS non prévenu d\'une coupure brève du téléphone');
+  assert(pub2.q.some(m=>m.type==='viewer-joined'&&m.keep===true),'téléphone informé que OBS garde le flux (keep)');
+  view2.close();pub2.close();await wait(100);
   console.log('OK signalisation');
-  pub.close();view.close();other.close();
+  other.close();
   pub=await open(port,'publisher','e2e');
   const src=new RTCVideoSource(),track=src.createTrack(),W=320,H=240;
   const timer=setInterval(()=>src.onFrame({width:W,height:H,data:new Uint8ClampedArray(W*H*1.5).fill(128)}),66);

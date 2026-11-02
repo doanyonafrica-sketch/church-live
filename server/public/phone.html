@@ -114,7 +114,7 @@ input[type=text],select{width:100%;background:var(--bg);color:var(--text);border
 
 <script>
 const VERSION='dev';
-const $=id=>document.getElementById(id),BR={480:1.5e6,720:4e6,1080:7e6};
+const $=id=>document.getElementById(id),BR={480:1.2e6,720:3e6,1080:5e6};
 let ws,pc,stream,facing='environment',running=false,wl,t0,last,ac,an,mt,rt,bad=0,muted=false;
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
 $('q').value=localStorage.q||'720';$('codec').value=localStorage.codec||'h264';
@@ -151,9 +151,9 @@ function connect(){
   if(!running)return;
   ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
-  ws.onclose=()=>{if(running){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…');setTimeout(connect,2000)}};
+  ws.onclose=()=>{if(running){if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
   ws.onmessage=async e=>{const m=JSON.parse(e.data);
-    if(m.type==='viewer-joined')await offer();
+    if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
     else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
     else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
     else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}};
@@ -164,7 +164,7 @@ async function offer(){
   pc.onconnectionstatechange=()=>{const s=pc.connectionState;
     if(s==='connected'){pill('EN DIRECT');msg('');document.body.classList.add('live');t0=t0||Date.now()}
     else if(s==='failed'||s==='disconnected'){document.body.classList.remove('live');pill('Reconnexion…','wait');clearTimeout(rt);
-      rt=setTimeout(()=>{if(running&&pc&&pc.connectionState!=='connected')offer()},2500)}};
+      rt=setTimeout(()=>{if(running&&pc&&pc.connectionState!=='connected')offer()},s==='failed'?1000:8000)}};
   stream.getTracks().forEach(t=>pc.addTrack(t,stream));
   const tr=pc.getTransceivers().find(t=>t.sender.track&&t.sender.track.kind==='video'),s=tr.sender,p=s.getParameters();
   if(!p.encodings||!p.encodings.length)p.encodings=[{}];
