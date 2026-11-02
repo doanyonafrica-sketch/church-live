@@ -1,6 +1,17 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path');
 const {WebSocketServer}=require('ws');
 const RELAY=new Set(['offer','answer','candidate']);
+const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','jitter','buf','dropped','lost'],
+  STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
+/* Ne garde que les champs connus, avec des types simples (les statistiques viennent du réseau) */
+const clean=m=>{const o={};
+  for(const k of NUM)if(typeof m[k]==='number'&&isFinite(m[k]))o[k]=m[k];
+  for(const k of STR)if(typeof m[k]==='string')o[k]=m[k].replace(/[<>&"'`]/g,'').slice(0,200);
+  for(const k of BOOL)if(typeof m[k]==='boolean')o[k]=m[k];
+  o.t=Date.now();return o};
+let lastCpu=null;
+const cpuPct=()=>{const c=os.cpus().reduce((a,x)=>{for(const k in x.times)a.t+=x.times[k];a.i+=x.times.idle;return a},{t:0,i:0});
+  let p=0;if(lastCpu){const dt=c.t-lastCpu.t,di=c.i-lastCpu.i;p=dt>0?Math.round(100*(1-di/dt)):0}lastCpu=c;return p};
 function createServer(opts={}){
   /* grace : délai avant d'annoncer un départ. Une coupure WebSocket brève (Wi-Fi) ne doit pas casser le flux vidéo. */
   const GRACE=opts.grace??4000;
@@ -14,7 +25,10 @@ function createServer(opts={}){
   app.get('/info',(q,r)=>{const port=srv.address().port,ips=[];
     for(const l of Object.values(os.networkInterfaces()))for(const i of l)if(i.family==='IPv4'&&!i.internal)ips.push(i.address+':'+port);
     const all=[...rooms.values()];
-    r.json({obs:'http://localhost:'+port+'/obs.html',addresses:ips,viewers:all.filter(x=>live(x.viewer)).length,publishers:all.filter(x=>live(x.publisher)).length});});
+    r.json({app:'tpr-live',name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',obs:'http://localhost:'+port+'/obs.html',addresses:ips,viewers:all.filter(x=>live(x.viewer)).length,publishers:all.filter(x=>live(x.publisher)).length,
+      cpu:cpuPct(),
+      rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
+        stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null}))});});
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
@@ -30,19 +44,23 @@ function createServer(opts={}){
         room=String(m.room||'main').slice(0,64);role=m.role==='publisher'?'publisher':'viewer';
         const r=rooms.get(room)||{t:{}};rooms.set(room,r);
         if(r.t[role]){clearTimeout(r.t[role]);delete r.t[role]}   /* retour rapide : on annule l'annonce de départ */
-        const old=r[role];r[role]=ws;if(old&&old!==ws)old.close();
-        if(role==='viewer'){r.active=m.active===true;send(r.publisher,{type:'viewer-joined',keep:r.active})}
-        else if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});
+        const old=r[role];r[role]=ws;if(old&&old!==ws)old.close(4000,'replaced');  /* 4000 : remplacé par un autre appareil, ne pas se reconnecter */
+        if(role==='viewer'){r.active=m.active===true;r.onair=m.onair===true;send(r.publisher,{type:'viewer-joined',keep:r.active});send(r.publisher,{type:'onair',value:r.onair})}
+        else{if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});send(ws,{type:'onair',value:live(r.viewer)&&!!r.onair})}  /* le téléphone connaît tout de suite son statut */
         return;
       }
       const r=rooms.get(room);if(!r)return;
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
+      /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */
+      if(m.type==='onair'){if(role==='viewer'){r.onair=m.value===true;send(r.publisher,{type:'onair',value:r.onair})}return}
+      if(m.type==='stats'){if(role==='publisher')r.stats=clean(m);return}
+      if(m.type==='vstats'){if(role==='viewer')r.vstats=clean(m);return}
       if(!RELAY.has(m.type))return;
       send(role==='publisher'?r.viewer:r.publisher,m);
     });
     ws.on('close',()=>{
       const r=rooms.get(room);if(!r||r[role]!==ws)return;
-      r[role]=null;if(role==='viewer')r.active=false;
+      r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else r.stats=null;
       const other=role==='viewer'?'publisher':'viewer';
       r.t[role]=setTimeout(()=>{
         delete r.t[role];

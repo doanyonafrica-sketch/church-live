@@ -12,9 +12,18 @@ Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » 
 ## Utilisation
 1. PC : installer et lancer **TPR Live** ; la fenêtre affiche l'adresse OBS et l'adresse à saisir sur le téléphone.
 2. OBS : Source Navigateur → adresse affichée (`http://localhost:3000/obs.html`), cocher « Contrôler l'audio via OBS ».
-3. Téléphone (APK) : saisir l'adresse du PC → Démarrer le direct.
+3. Téléphone (APK) : touchez **Rechercher le PC** dans les Réglages (ou laissez l'application le faire seule au premier lancement, et après trois échecs de connexion) → Démarrer le direct. L'adresse peut aussi être saisie à la main.
 4. Mode USB : Paramètres du téléphone → Partage de connexion → Partage par USB, puis utiliser l'adresse affichée par le PC.
 5. Autoriser TPR Live dans le pare-feu Windows (réseau privé).
+
+## Plusieurs téléphones
+Chaque téléphone choisit un **numéro de caméra** (Réglages). Dans OBS, ajoutez une Source Navigateur par caméra : la caméra 1 utilise `obs.html`, les autres `obs.html?room=cam2`, `?room=cam3`, `?room=cam4` (adresses à copier dans la fenêtre du PC). Deux téléphones ne peuvent pas partager le même numéro. Chaque caméra consomme du réseau (≈ 3 Mb/s) et du processeur sur le PC.
+
+## Mesures dans la fenêtre du PC
+La fenêtre TPR Live affiche, pour chaque caméra : image et images/s, débit (Mb/s), compression, latence et pertes réseau, signal Wi-Fi (dBm) et vitesse de liaison, batterie du téléphone, durée du direct, micro, cause d'une éventuelle limitation, et le conseil de diagnostic. Elle affiche aussi ce que **OBS reçoit réellement** (images/s, paquets et images perdus, gigue, tampon) et la charge du processeur du PC. Le signal Wi-Fi n'est pas disponible en partage de connexion USB.
+
+## Indicateur « à l'antenne » (téléphone)
+Chaque téléphone affiche un bandeau en haut de l'écran : **rouge « À L'ANTENNE »** (avec un liseré rouge autour de l'image) quand sa caméra est visible dans le **Programme** d'OBS, **« PAS À L'ANTENNE »** quand OBS utilise une autre caméra ou une autre scène, **orange « STATUT INCONNU »** si la liaison avec le PC est coupée. C'est la Source Navigateur d'OBS qui le détecte (la caméra doit être dans la scène en direct ; en mode Studio, l'aperçu ne compte pas). La fenêtre du PC affiche aussi « À l'antenne » à côté de la caméra concernée. Il faut mettre à jour **le PC et le téléphone** (nouvelle Release).
 
 ## Développement
 `cd server && npm install && npm test` ; `npm start` pour lancer le serveur seul.
