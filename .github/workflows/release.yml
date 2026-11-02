@@ -5,24 +5,7 @@ on:
 permissions:
   contents: write
 jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Build et publication
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir desktop/server && cp server/server.js desktop/server/ && cp -r server/public desktop/server/
-          cd desktop && npm install
-          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
-          npx electron-builder --win --publish always
   apk:
-    needs: windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,14 +25,51 @@ jobs:
           npm install
           npx cap add android
           cp -r icons/res/. android/app/src/main/res/
-          sed -i 's#<activity #<activity android:screenOrientation="sensorLandscape" #' android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<activity\b#<activity android:screenOrientation="sensorLandscape"#' android/app/src/main/AndroidManifest.xml
+          grep -q sensorLandscape android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><application#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cp patch/MainActivity.java android/app/src/main/java/africa/doanyon/churchlive/MainActivity.java
           VER="${GITHUB_REF_NAME#v}"; IFS=. read -r MA MI PA <<< "$VER"
-          sed -i "s/versionCode 1/versionCode $((MA*10000+MI*100+PA))/; s/versionName \"1.0\"/versionName \"$VER\"/" android/app/build.gradle
+          sed -i "s/versionCode 1/versionCode $((10#$MA*10000+10#$MI*100+10#$PA))/; s/versionName \"1.0\"/versionName \"$VER\"/" android/app/build.gradle
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../../church-live.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: church-live-apk-release
+          path: church-live.apk
+  windows:
+    needs: apk
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          name: church-live-apk-release
+          path: apk
+      - name: Build et publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir desktop/server && cp server/server.js desktop/server/ && cp -r server/public desktop/server/
+          # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
+          cp apk/church-live.apk desktop/server/public/church-live.apk
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > desktop/server/public/apk-version.json
+          cd desktop && npm install
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          npx electron-builder --win --publish always
+  attach:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: church-live-apk-release
+          path: apk
       - uses: softprops/action-gh-release@v2
         with:
-          files: church-live.apk
+          files: apk/church-live.apk

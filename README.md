@@ -21,11 +21,11 @@ Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » 
 
 ## Publier une nouvelle version (mises à jour automatiques)
 1. `git add . && git commit -m "description" && git push`
-2. `git tag v1.0.1 && git push origin v1.0.1` (numéro supérieur au précédent)
-3. GitHub compile et publie une **Release** avec l'installeur Windows et `church-live.apk`.
-- **PC Windows** : l'application détecte la nouvelle version au démarrage, la télécharge et propose de redémarrer.
-- **Téléphone** : l'application affiche « Nouvelle version disponible » ; un appui télécharge l'APK, puis on l'installe (Android n'autorise pas l'installation silencieuse hors Play Store).
-
+2. `git tag v1.0.1 && git push origin v1.0.1` (numéro supérieur au précédent). **Sans cette étiquette (tag), aucune mise à jour n'est publiée.**
+3. GitHub compile l'APK, l'intègre à l'installeur Windows, publie une **Release** avec les deux fichiers.
+- **PC Windows** : vérifie au démarrage puis toutes les 30 minutes, télécharge seul et propose de redémarrer (à ne pas faire pendant un direct).
+- **Téléphone** : à l'ouverture et à chaque connexion au PC, il demande la version de l'APK au PC (aucun Internet nécessaire). Si elle est plus récente, un bouton « Nouvelle version disponible » apparaît : un appui télécharge l'APK et ouvre l'écran d'installation Android (un appui sur « Mettre à jour »). La première fois, Android demande d'autoriser l'installation depuis TPR Live.
+- Le dépôt GitHub doit être **public** (sinon le PC ne peut pas vérifier les mises à jour).
 
 ## Important : première installation après cette correction
 L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.

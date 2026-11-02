@@ -23,8 +23,9 @@ jobs:
           npm install
           npx cap add android
           cp -r icons/res/. android/app/src/main/res/
-          sed -i 's#<activity #<activity android:screenOrientation="sensorLandscape" #' android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<activity\b#<activity android:screenOrientation="sensorLandscape"#' android/app/src/main/AndroidManifest.xml
+          grep -q sensorLandscape android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><application#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cp patch/MainActivity.java android/app/src/main/java/africa/doanyon/churchlive/MainActivity.java
           sed -i "s/versionCode 1/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle

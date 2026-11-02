@@ -4,7 +4,10 @@ const RELAY=new Set(['offer','answer','candidate']);
 function createServer(opts={}){
   /* grace : délai avant d'annoncer un départ. Une coupure WebSocket brève (Wi-Fi) ne doit pas casser le flux vidéo. */
   const GRACE=opts.grace??4000;
-  const app=express();app.use(express.static(path.join(__dirname,'public')));
+  const app=express();
+  /* Le téléphone (origine http://localhost dans l'APK) doit pouvoir lire la version de l'APK proposée par le PC */
+  app.get('/apk-version.json',(q,r,n)=>{r.set({'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});n()});
+  app.use(express.static(path.join(__dirname,'public')));
   const srv=http.createServer(app),wss=new WebSocketServer({server:srv,path:'/ws',maxPayload:1<<17});
   const rooms=new Map();
   const live=w=>!!w&&w.readyState===1;

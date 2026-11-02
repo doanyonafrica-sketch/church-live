@@ -5,8 +5,8 @@
 <script>
 const P=new URLSearchParams(location.search),room=P.get('room')||'main';
 /* Tampon anti-saccades (ms). 0 = latence minimale mais l'image saccade au moindre aléa du Wi-Fi.
-   200 ms par défaut. Modifiable : obs.html?delay=80 (plus réactif) ou ?delay=300 (plus fluide). */
-const DELAY=Math.max(0,+(P.get('delay')||200));
+   100 ms par défaut. Modifiable : obs.html?delay=80 (plus réactif) ou ?delay=300 (plus fluide). */
+const DELAY=Math.max(0,+(P.get('delay')||100));
 let ws,pc,q=Promise.resolve(),prev;
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const isLive=()=>!!pc&&pc.connectionState==='connected';

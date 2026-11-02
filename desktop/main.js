@@ -16,7 +16,7 @@ app.whenReady().then(()=>{
             .then(r=>{if(r.response===0)autoUpdater.quitAndInstall()});
         });
         autoUpdater.on('error',()=>{});
-        autoUpdater.checkForUpdates();
+        const chk=()=>autoUpdater.checkForUpdates().catch(()=>{});chk();setInterval(chk,30*60*1000);
       }catch{}
     }
   });

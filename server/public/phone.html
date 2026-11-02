@@ -150,7 +150,7 @@ function meter(){
 function connect(){
   if(!running)return;
   ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
-  ws.onopen=()=>{sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  ws.onopen=()=>{checkUpdate();sj({type:'join',role:'publisher',room:'main'});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
   ws.onclose=()=>{if(running){if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
   ws.onmessage=async e=>{const m=JSON.parse(e.data);
     if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
@@ -213,13 +213,23 @@ $('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stre
 $('mute').onclick=()=>{muted=!muted;if(stream)stream.getAudioTracks().forEach(a=>a.enabled=!muted);$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro'};
 $('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});$('torch').classList.toggle('on',on)};
 $('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value}]}).catch(()=>{});
-(async()=>{
-  if(VERSION==='dev')return;
+let updShown=false;
+async function checkUpdate(){
+  if(VERSION==='dev'||updShown)return;
+  const gt=(x,y)=>{x=x.split('.').map(Number);y=y.split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
+  const show=(v,url)=>{updShown=true;const l=document.createElement('a');l.href=url;l.target='_blank';l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';
+    l.onclick=e=>{if(window.TPRNative){e.preventDefault();l.textContent='Téléchargement de la version '+v+'…';try{TPRNative.install(url)}catch{l.textContent='Échec du téléchargement'}}};
+    $('upd').appendChild(l)};
+  /* 1) auprès du PC (fonctionne sans Internet : le PC se met à jour seul, puis fournit l'APK au téléphone) */
+  const base=$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'');
+  if(base){try{const j=await (await fetch('http://'+base+'/apk-version.json',{cache:'no-store'})).json();
+    if(j.version&&gt(j.version,VERSION)){show(j.version,'http://'+base+'/church-live.apk');return}}catch{}}
+  /* 2) sinon auprès de GitHub (si le téléphone a Internet) */
   try{
     const j=await (await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest')).json();
     const v=(j.tag_name||'').replace(/^v/,''),a=(j.assets||[]).find(x=>x.name==='church-live.apk');
-    const gt=(x,y)=>{x=x.split('.').map(Number);y=y.split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
-    if(a&&gt(v,VERSION)){const l=document.createElement('a');l.href=a.browser_download_url;l.target='_blank';l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';$('upd').appendChild(l)}
+    if(a&&gt(v,VERSION))show(v,a.browser_download_url);
   }catch{}
-})();
+}
+checkUpdate();$('addr').addEventListener('change',checkUpdate);
 </script>
