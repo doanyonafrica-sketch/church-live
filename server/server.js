@@ -35,6 +35,8 @@ function createServer(opts={}){
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
   hb.unref();srv.on('close',()=>{clearInterval(hb);wss.close();if(cams)cams.close()});
+  /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
+  srv.shutdown=()=>{try{if(cams)cams.close()}catch{}for(const w of wss.clients){try{w.terminate()}catch{}}try{srv.close()}catch{}if(srv.closeAllConnections)try{srv.closeAllConnections()}catch{}};
   wss.on('connection',ws=>{
     let room=null,role=null;ws.dead=false;
     ws.on('pong',()=>{ws.dead=false});

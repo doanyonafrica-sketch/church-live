@@ -1,7 +1,9 @@
 const {app,BrowserWindow,dialog,Menu}=require('electron');
 const {createServer}=require('./server/server');
+let srv;
+const stopServer=()=>{try{srv&&srv.shutdown&&srv.shutdown()}catch{}};
 app.whenReady().then(()=>{
-  const srv=createServer({dataDir:app.getPath('userData')});
+  srv=createServer({dataDir:app.getPath('userData')});
   srv.on('error',e=>{dialog.showErrorBox('TPR Live','Impossible de démarrer le serveur (port 3000 déjà utilisé ?) : '+e.message);app.quit()});
   srv.listen(3000,'0.0.0.0',()=>{
     Menu.setApplicationMenu(null);
@@ -13,7 +15,7 @@ app.whenReady().then(()=>{
         autoUpdater.on('update-downloaded',i=>{
           dialog.showMessageBox(w,{type:'info',buttons:['Redémarrer maintenant','Plus tard'],defaultId:0,
             title:'Mise à jour',message:'La version '+i.version+' est prête.',detail:'Redémarrez TPR Live pour l\'installer. Ne le faites pas pendant un direct.'})
-            .then(r=>{if(r.response===0)autoUpdater.quitAndInstall()});
+            .then(r=>{if(r.response===0){stopServer();autoUpdater.quitAndInstall()}});
         });
         autoUpdater.on('error',()=>{});
         const chk=()=>autoUpdater.checkForUpdates().catch(()=>{});chk();setInterval(chk,30*60*1000);
@@ -21,4 +23,6 @@ app.whenReady().then(()=>{
     }
   });
 });
+app.on('before-quit',stopServer);
+app.on('will-quit',stopServer);
 app.on('window-all-closed',()=>app.quit());
