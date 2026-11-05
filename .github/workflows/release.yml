@@ -55,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir desktop/server && cp server/server.js desktop/server/ && cp -r server/public desktop/server/
+          mkdir desktop/server && cp server/server.js server/camera.js desktop/server/ && cp -r server/public desktop/server/
           # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
           cp apk/church-live.apk desktop/server/public/church-live.apk
           printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > desktop/server/public/apk-version.json

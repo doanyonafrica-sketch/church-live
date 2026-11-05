@@ -14,7 +14,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          mkdir desktop/server && cp server/server.js desktop/server/ && cp -r server/public desktop/server/
+          mkdir desktop/server && cp server/server.js server/camera.js desktop/server/ && cp -r server/public desktop/server/
           cd desktop && npm install && npx electron-builder --win --publish never
       - uses: actions/upload-artifact@v4
         with:

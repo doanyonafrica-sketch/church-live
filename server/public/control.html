@@ -48,9 +48,68 @@ details{background:var(--surf);border:1px solid var(--line);border-radius:12px;p
 summary{cursor:pointer;padding:12px 0;font-weight:600}
 details ul{margin:0 0 12px;padding-left:20px;color:var(--mute)}details li{margin:6px 0}details b{color:var(--text);font-weight:600}
 code.i{font:13px Consolas,monospace;background:var(--bg);padding:1px 6px;border-radius:5px;color:var(--text)}
+
+/* Onglets */
+.tabs{display:flex;gap:6px;margin:-6px 0 20px;border-bottom:1px solid var(--line)}
+.tabs button{background:none;color:var(--mute);padding:10px 18px;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-1px;border-radius:8px 8px 0 0}
+.tabs button:hover{color:var(--text)}
+.tabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--live)}
+.tabs button:focus-visible{outline:2px solid var(--warn);outline-offset:-2px}
+/* Caméras PTZ */
+.btn{background:var(--text);color:var(--bg);border-radius:9px;padding:8px 16px;font-weight:600}
+.btn.sec2{background:var(--surf2);color:var(--text);border:1px solid var(--line)}
+.btn.dng{background:none;color:var(--live);border:1px solid var(--live)}
+.btn:disabled{opacity:.45;cursor:default}
+.cm-top{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.cm-list{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+.cm-list button{background:var(--surf);color:var(--text);border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-weight:600}
+.cm-list button[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.cm-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr);gap:18px;align-items:start}
+@media(max-width:860px){.cm-grid{grid-template-columns:1fr}}
+.frame{position:relative;aspect-ratio:16/9;background:#000;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.frame img{width:100%;height:100%;object-fit:contain;display:block}
+.frame .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:var(--mute);background:rgba(0,0,0,.55)}
+.frame .msg.err{color:var(--warn)}
+[hidden]{display:none!important}
+.fld input{width:100%}.fld2>*{min-width:0}
+.cm-bar{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.cm-bar .sp{flex:1}
+.panel{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:12px}
+.panel h3{margin:0 0 12px;font:600 15px var(--serif);color:var(--text)}
+.pad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,64px);gap:8px;justify-content:center;margin:4px 0 12px}
+.pad button,.zoom button{background:var(--surf2);color:var(--text);border:1px solid var(--line);border-radius:14px;font-size:24px;line-height:1;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button:hover,.zoom button:hover{background:#3a2933}
+.pad button.on,.zoom button.on{background:var(--warn);color:var(--bg)}
+.pad button.mid{font-size:13px;font-weight:700;border-radius:50%}
+.zoom{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.zoom button{height:46px;font-size:15px;font-weight:600}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:var(--surf2);color:var(--mute);padding:8px 4px;font-weight:600;font-size:14px}
+.seg button[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.pre{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.pre div{display:flex}.pre .g{flex:1;background:var(--surf2);color:var(--text);border:1px solid var(--line);border-radius:10px 0 0 10px;padding:9px 10px;font-weight:600;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pre .x{background:var(--surf2);color:var(--mute);border:1px solid var(--line);border-left:0;border-radius:0 10px 10px 0;padding:0 10px}
+.pre .g:hover{background:#3a2933}.pre .x:hover{color:var(--live)}
+.cm-save{display:flex;gap:8px;margin-top:10px}
+input[type=text],input[type=password],input[type=number]{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px 12px;min-width:0}
+input:focus-visible{outline:2px solid var(--warn);outline-offset:1px}
+.cm-save input{flex:1}
+.hint{color:var(--mute);font-size:13px;margin:8px 0 0}
+dialog{background:var(--surf);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:22px 24px;width:min(520px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.65)}
+dialog h2{margin:0 0 14px}
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}.fld label{font-size:13px;color:var(--mute)}
+.fld2{display:grid;grid-template-columns:1fr 110px;gap:12px}
+.res{margin:0 0 12px;padding:10px 14px;border-radius:10px;font-size:14px;background:var(--surf2)}
+.res.ok{color:var(--ok)}.res.bad{color:var(--warn)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px}.acts .l{margin-right:auto}
+dialog details{margin-bottom:12px;background:var(--surf2)}
+.kbd{font:12px Consolas,monospace;background:var(--bg);padding:1px 6px;border-radius:5px}
 </style>
 <header><img src="/logo.png" alt="Logo de l'église"><div><h1>TPR Live</h1><p>Tabernacle La Parole Révélée. Gardez cette fenêtre ouverte pendant le direct.</p></div></header>
 
+<nav class="tabs" role="tablist"><button role="tab" id="t-live" data-tab="live" aria-selected="true">Direct</button><button role="tab" id="t-cam" data-tab="cam" aria-selected="false">Caméras PTZ</button></nav>
+<div id="live">
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
 <div class="sec" id="camsec" hidden><h2>État des caméras</h2><div id="cams"></div></div>
@@ -64,6 +123,50 @@ code.i{font:13px Consolas,monospace;background:var(--bg);padding:1px 6px;border-
 <li><b>OBS :</b> réglez les images par seconde sur 30 (Paramètres, Vidéo) et activez l'accélération matérielle (Paramètres, Avancé).</li>
 <li><b>Tampon :</b> ajoutez <code class="i">?delay=250</code> à l'adresse OBS pour une image plus fluide (un peu plus de latence), ou <code class="i">?delay=50</code> pour plus de réactivité. Par défaut : 100 ms.</li>
 <li><b>Mesures côté OBS :</b> ajoutez <code class="i">?debug=1</code> à l'adresse pour afficher ce qu'OBS reçoit.</li></ul></details>
+
+</div>
+
+<section id="cam" hidden>
+  <div class="cm-top"><div class="cm-list" id="cm-list" role="group" aria-label="Caméras"></div><button class="btn" id="cm-add">+ Ajouter une caméra</button></div>
+  <div class="empty" id="cm-empty" hidden>Aucune caméra enregistrée. Touchez « Ajouter une caméra », saisissez son adresse IP (par exemple <code class="i">192.168.1.182</code>) ainsi que son nom d'utilisateur et son mot de passe.</div>
+  <div id="cm-main" hidden>
+    <div class="cm-grid">
+      <div>
+        <div class="frame"><img id="cm-img" alt="Image de la caméra"><div class="msg" id="cm-msg">Connexion à la caméra…</div></div>
+        <div class="cm-bar"><span class="badge" id="cm-st">—</span><span class="sp"></span><button class="btn sec2" id="cm-reload">Recharger l'image</button><button class="btn sec2" id="cm-edit">Réglages</button></div>
+        <p class="hint" id="cm-info"></p>
+      </div>
+      <div>
+        <div class="panel" id="cm-ptz"><h3>Orientation</h3>
+          <div class="pad" id="pad">
+            <span></span><button data-d="0,1,0" aria-label="Monter">▲</button><span></span>
+            <button data-d="-1,0,0" aria-label="Tourner à gauche">◀</button><button class="mid" id="cm-home" aria-label="Retour à la position de départ">Départ</button><button data-d="1,0,0" aria-label="Tourner à droite">▶</button>
+            <span></span><button data-d="0,-1,0" aria-label="Descendre">▼</button><span></span>
+          </div>
+          <div class="zoom"><button data-d="0,0,-1" aria-label="Zoom arrière">Zoom −</button><button data-d="0,0,1" aria-label="Zoom avant">Zoom +</button></div>
+          <div class="seg" role="group" aria-label="Vitesse" id="cm-speed"><button data-s=".2">Lent</button><button data-s=".5">Normal</button><button data-s="1">Rapide</button></div>
+          <p class="hint">Maintenez un bouton pour bouger. Clavier : flèches, <span class="kbd">+</span> / <span class="kbd">−</span>.</p>
+        </div>
+        <div class="panel" id="cm-pre"><h3>Positions mémorisées</h3>
+          <div class="pre" id="cm-pres"></div>
+          <div class="cm-save"><input type="text" id="cm-pname" maxlength="40" placeholder="Nom (ex. Chaire)" aria-label="Nom de la position"><button class="btn sec2" id="cm-psave">Mémoriser ici</button></div>
+          <p class="hint">Placez la caméra, donnez un nom, puis « Mémoriser ici ». Un appui sur la position la rejoint.</p>
+        </div>
+      </div>
+    </div>
+    <div class="sec" style="margin-top:12px"><h2>Adresse du flux pour OBS</h2><p>Dans OBS : <b>+</b> → <b>Source média</b> → décochez « Fichier local » → collez l'adresse. La caméra reste utilisable depuis OBS et depuis cette fenêtre en même temps.</p><div id="cm-obs"></div></div>
+  </div>
+
+  <dialog id="cm-form"><form method="dialog" id="cm-f" autocomplete="off">
+    <h2 id="cm-ft">Ajouter une caméra</h2>
+    <div class="fld"><label for="f-name">Nom</label><input type="text" id="f-name" maxlength="60" placeholder="Dôme de la nef"></div>
+    <div class="fld fld2"><div class="fld" style="margin:0"><label for="f-host">Adresse IP</label><input type="text" id="f-host" inputmode="decimal" placeholder="192.168.1.182" required></div><div class="fld" style="margin:0"><label for="f-port">Port</label><input type="number" id="f-port" value="80" min="1" max="65535"></div></div>
+    <div class="fld fld2" style="grid-template-columns:1fr 1fr"><div class="fld" style="margin:0"><label for="f-user">Utilisateur</label><input type="text" id="f-user" placeholder="admin" autocapitalize="off"></div><div class="fld" style="margin:0"><label for="f-pass">Mot de passe</label><input type="password" id="f-pass"></div></div>
+    <details><summary>Réglages avancés</summary><div class="fld"><label for="f-rtsp">Adresse RTSP (seulement si l'image n'apparaît pas)</label><input type="text" id="f-rtsp" placeholder="rtsp://192.168.1.182:554/stream1"></div><p class="hint" style="margin:0 0 12px">Laissez vide : l'adresse est lue automatiquement dans la caméra (ONVIF).</p></details>
+    <div class="res" id="f-res" hidden></div>
+    <div class="acts"><button type="button" class="btn dng l" id="f-del" hidden>Supprimer</button><button type="button" class="btn sec2" id="f-test">Tester la connexion</button><button type="button" class="btn sec2" id="f-cancel">Annuler</button><button type="submit" class="btn" id="f-ok">Enregistrer</button></div>
+  </form></dialog>
+</section>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -108,3 +211,4 @@ $('bt').textContent=ok?'Tout est prêt':i.publishers?'Téléphone connecté, OBS
 $('bs').textContent=ok?'OBS reçoit l\'image du téléphone.':i.publishers?'Ajoutez la Source Navigateur dans OBS (adresse plus bas).':i.viewers?'Saisissez l\'adresse du PC dans l\'application du téléphone.':'Le serveur est en marche.'}
 r();setInterval(r,1000);
 </script>
+<script src="/ptz.js"></script>

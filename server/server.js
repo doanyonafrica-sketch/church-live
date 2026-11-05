@@ -18,6 +18,8 @@ function createServer(opts={}){
   const app=express();
   /* Le téléphone (origine http://localhost dans l'APK) doit pouvoir lire la version de l'APK proposée par le PC */
   app.get('/apk-version.json',(q,r,n)=>{r.set({'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});n()});
+  /* Caméras IP (dômes PTZ) : commande ONVIF + image dans la fenêtre du PC (réservé à 127.0.0.1) */
+  const cams=opts.cameras===false?null:require('./camera').mount(app,express,{dataDir:opts.dataDir});
   app.use(express.static(path.join(__dirname,'public')));
   const srv=http.createServer(app),wss=new WebSocketServer({server:srv,path:'/ws',maxPayload:1<<17});
   const rooms=new Map();
@@ -32,7 +34,7 @@ function createServer(opts={}){
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
-  hb.unref();srv.on('close',()=>{clearInterval(hb);wss.close()});
+  hb.unref();srv.on('close',()=>{clearInterval(hb);wss.close();if(cams)cams.close()});
   wss.on('connection',ws=>{
     let room=null,role=null;ws.dead=false;
     ws.on('pong',()=>{ws.dead=false});

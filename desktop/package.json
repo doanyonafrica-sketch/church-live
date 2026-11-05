@@ -7,7 +7,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "ws": "^8.18.0",
-    "electron-updater": "^6.3.0"
+    "electron-updater": "^6.3.0",
+    "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -34,6 +35,9 @@
       "owner": "doanyonafrica-sketch",
       "repo": "church-live",
       "releaseType": "release"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ]
   }
 }

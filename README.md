@@ -25,6 +25,15 @@ La fenêtre TPR Live affiche, pour chaque caméra : image et images/s, débit (M
 ## Indicateur « à l'antenne » (téléphone)
 Chaque téléphone affiche un bandeau en haut de l'écran : **rouge « À L'ANTENNE »** (avec un liseré rouge autour de l'image) quand sa caméra est visible dans le **Programme** d'OBS, **« PAS À L'ANTENNE »** quand OBS utilise une autre caméra ou une autre scène, **orange « STATUT INCONNU »** si la liaison avec le PC est coupée. C'est la Source Navigateur d'OBS qui le détecte (la caméra doit être dans la scène en direct ; en mode Studio, l'aperçu ne compte pas). La fenêtre du PC affiche aussi « À l'antenne » à côté de la caméra concernée. Il faut mettre à jour **le PC et le téléphone** (nouvelle Release).
 
+## Caméras dômes IP (PTZ)
+Onglet **Caméras PTZ** dans la fenêtre du PC : image en direct, rotation (haut/bas/gauche/droite, zoom, vitesse), positions mémorisées (« Chaire », « Chorale »…) et adresse du flux à copier dans OBS.
+1. **Ajouter une caméra** : adresse IP (ex. `192.168.1.182`), nom d'utilisateur et mot de passe de la caméra, puis **Tester la connexion** (le port ONVIF est cherché automatiquement : 80, 8080, 2020, 8899…).
+2. La commande utilise **ONVIF**, que presque toutes les caméras IP comprennent. **Activez ONVIF dans la caméra** si elle le propose (souvent dans Réseau → Intégration/ONVIF), et créez-y un utilisateur ONVIF si besoin (sur certaines marques, TP-Link Tapo par exemple, c'est un « compte de caméra » différent du compte de l'application).
+3. L'image passe par **ffmpeg** (intégré à l'application) : le flux RTSP de la caméra est converti pour la fenêtre. Pour l'affichage on prend le flux de qualité réduite (moins de réseau et de processeur).
+4. OBS : **+ → Source média**, décochez « Fichier local », collez l'adresse RTSP affichée sous la caméra. OBS reçoit la qualité maximale, sans passer par TPR Live.
+5. Les caméras et leurs mots de passe sont enregistrés sur le PC (dossier de données de TPR Live), jamais envoyés ailleurs. Seul le PC lui-même peut les voir et les commander : les téléphones du réseau n'y ont pas accès.
+6. Sécurité : un ordre de déplacement s'arrête tout seul au bout de 1,5 s si l'ordre « stop » se perd. Réservez les caméras à un réseau privé et changez le mot de passe d'usine.
+
 ## Développement
 `cd server && npm install && npm test` ; `npm start` pour lancer le serveur seul.
 
