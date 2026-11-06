@@ -87,6 +87,7 @@ body.cam #vu{display:block}
 #torch{display:none}#torch.show{display:flex}
 .mic-off{display:none}#mute.on .mic-on{display:none}#mute.on .mic-off{display:block}
 #goctl{min-width:84px;color:var(--text);font-weight:600;font-size:13px}
+#gol{margin-top:14px}   /* le halo du micro (jusqu'à 12 px) ne doit pas recouvrir le texte */
 #go{width:84px;height:84px;border-radius:50%;border:3px solid var(--text);display:grid;place-items:center;
   box-shadow:0 0 0 calc(var(--lv,0)*12px) rgba(244,238,227,.22);transition:box-shadow .08s linear}
 #go b{width:62px;height:62px;border-radius:50%;background:var(--live);transition:border-radius .2s,width .2s,height .2s}
@@ -132,6 +133,7 @@ input[type=text],select{width:100%;background:var(--bg);color:var(--text);border
 <dialog id="sheet">
   <div class="sh"><h2>Réglages</h2><button id="close">Fermer</button></div>
   <div class="fld"><label for="addr">Adresse du PC</label><input type="text" id="addr" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="192.168.1.10:3000"><p class="hint">Elle s'affiche dans la fenêtre TPR Live sur le PC, ou touchez « Rechercher le PC ».</p><button id="scan">Rechercher le PC</button><div id="found"></div></div>
+  <div class="fld"><label for="code">Code d'appairage</label><input type="text" id="code" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="6 chiffres"><p class="hint">Affiché dans la fenêtre TPR Live sur le PC. À saisir une seule fois.</p></div>
   <div class="fld"><label for="cam">Numéro de cette caméra</label><select id="cam"><option value="1">Caméra 1</option><option value="2">Caméra 2</option><option value="3">Caméra 3</option><option value="4">Caméra 4</option></select><p class="hint">Plusieurs téléphones : donnez un numéro différent à chacun. Chaque numéro a sa propre source dans OBS (adresses affichées dans la fenêtre du PC).</p></div>
   <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
@@ -155,14 +157,16 @@ function setAir(v){
 }
 setAir(null);
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
-$('cam').value=localStorage.cam||'1';$('q').value=localStorage.q||'720';$('codec').value=localStorage.codec||'h264';
+$('cam').value=localStorage.cam||'1';$('code').value=localStorage.code||'';
+const TID=localStorage.tid||(localStorage.tid=Math.random().toString(36).slice(2)+Date.now().toString(36));   /* identifie CE téléphone : il reprend sa place après une coupure */
+$('q').value=localStorage.q||'720';$('codec').value=localStorage.codec||'h264';
 $('ver').textContent=VERSION==='dev'?'Version de développement':'TPR Live '+VERSION;
 const ROOM=()=>$('cam').value==='1'?'main':'cam'+$('cam').value;
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
 const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
 const openSet=()=>$('sheet').showModal();
-['addr','q','codec','cam'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
+['addr','q','codec','cam','code'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
 $('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
 if(!$('addr').value)msg('Saisissez l\'adresse du PC dans les réglages.');
 
@@ -188,11 +192,17 @@ function meter(){
 }
 function connect(){
   if(!running)return;
-  ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
+  const w=ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   let ok=false;
-  ws.onopen=()=>{ok=true;fails=0;setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM()});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
-  ws.onclose=e=>{if(running)setAir(null);if(e.code===4000&&running){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}if(running){if(!ok&&++fails%3===0)discover();if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
-  ws.onmessage=async e=>{const m=JSON.parse(e.data);
+  w.onopen=()=>{ok=true;fails=0;setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  w.onclose=e=>{if(w!==ws)return;if(running)setAir(null);
+    if(e.code===4003&&running){$('go').click();msg('Code d\'appairage manquant ou incorrect. Saisissez celui de la fenêtre TPR Live (Réglages).');alertBox('Code d\'appairage incorrect.');openSet();return}
+    /* caméra déjà prise par un AUTRE téléphone : on n'écrase pas son direct, on attend un peu puis on abandonne */
+    if(e.code===4001&&running){if(++busy>8){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}
+      pill('Caméra occupée…','wait');msg('Cette caméra est déjà utilisée par un autre téléphone. Nouvelle tentative…');setTimeout(connect,3000);return}
+    if(e.code===4000&&running){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}if(running){if(!ok&&++fails%3===0)discover();if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
+  w.onmessage=async e=>{const m=JSON.parse(e.data);
+    if(m.type==='busy'||m.type==='denied')return;busy=0;
     if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
     else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
     else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
@@ -217,10 +227,11 @@ async function offer(){
     tr.setCodecPreferences([...all.filter(c=>w.test(c.mimeType)),...all.filter(c=>!w.test(c.mimeType))])}catch{}}
   const o=await pc.createOffer();await pc.setLocalDescription(o);sj({type:'offer',sdp:o.sdp});
 }
-function diagnose(fps,lim,loss){
+function diagnose(fps,lim,loss,h){
   if(lim==='cpu')return 'Le téléphone est surchargé. Choisissez 480p ou la compression H.264 dans les réglages, et laissez-le refroidir.';
   if(lim==='bandwidth'||loss>.03)return 'Le réseau est instable. Rapprochez-vous du routeur (Wi-Fi 5 GHz) ou utilisez le partage de connexion USB.';
   if(fps&&fps<24)return 'La caméra ne fournit que '+Math.round(fps)+' images par seconde : la lumière est insuffisante. Éclairez la scène.';
+  if(h&&peakH&&h<peakH*.75)return 'Qualité réduite à '+h+'p (au départ : '+peakH+'p) : le réseau ou le processeur du téléphone est limité.';
   return '';
 }
 setInterval(async()=>{
@@ -235,7 +246,9 @@ setInterval(async()=>{
   $('c5').textContent=rtt?Math.round(rtt*1000)+' ms':'';
   const s=Math.floor((now-t0)/1000),pad=n=>String(n).padStart(2,'0');
   $('clock').textContent=pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60);
-  const d=diagnose(fps,o.qualityLimitationReason,rin?rin.fractionLost||0:0);
+  /* Pendant les 15 premières secondes le débit monte : la limitation « bandwidth » est normale, ne pas alarmer */
+  const hh=o.frameHeight||0;if(hh>peakH)peakH=hh;
+  const d=(t0&&now-t0<15000)?'':diagnose(fps,o.qualityLimitationReason,rin?rin.fractionLost||0:0,hh);
   bad=d?bad+1:0;
   if(bad>=3)alertBox(d);else if(!d){alertBox('');$('diag').textContent='Tout va bien : '+Math.round(fps)+' images par seconde, '+(kbps/1000).toFixed(1)+' Mb/s.'}
   /* envoi des mesures au PC (affichées dans la fenêtre TPR Live) */
@@ -245,7 +258,7 @@ setInterval(async()=>{
     rssi:dev.rssi,link:dev.link,battery:dev.battery,charging:dev.charging});
 },1000);
 $('go').onclick=async()=>{
-  if(running){running=false;clearTimeout(rt);clearInterval(mt);ws&&ws.close();pc&&pc.close();pc=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;wl&&wl.release();an=null;t0=last=null;bad=0;
+  if(running){running=false;clearTimeout(rt);clearInterval(mt);ws&&ws.close();pc&&pc.close();pc=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;wl&&wl.release();an=null;t0=last=null;bad=0;busy=0;peakH=0;
     document.body.classList.remove('live','run','cam','wait','onair');setAir(null);$('v').srcObject=null;$('go').style.setProperty('--lv',0);$('go').setAttribute('aria-label','Démarrer le direct');$('gol').textContent='Démarrer';pill('Hors ligne');alertBox('');msg('Direct terminé.');$('clock').textContent='00:00:00';
     $('c2').textContent=$('c3').textContent=$('c4').textContent=$('c5').textContent='';return}
   if(!$('addr').value.trim()){openSet();discover();return}
@@ -259,7 +272,7 @@ $('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stre
 $('mute').onclick=()=>{muted=!muted;if(stream)stream.getAudioTracks().forEach(a=>a.enabled=!muted);$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro'};
 $('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});$('torch').classList.toggle('on',on)};
 $('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value}]}).catch(()=>{});
-let scanning=false,fails=0;
+let scanning=false,fails=0,busy=0,peakH=0;
 function discover(){
   if(scanning)return;
   if(!window.TPRNative||!TPRNative.discover){$('found').textContent='La recherche automatique fonctionne dans l\'application TPR Live (APK).';return}

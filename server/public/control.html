@@ -114,14 +114,14 @@ dialog details{margin-bottom:12px;background:var(--surf2)}
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
 <div class="sec" id="camsec" hidden><h2>État des caméras</h2><div id="cams"></div></div>
 
-<div class="sec"><h2>Adresse à saisir sur le téléphone</h2><p>Dans Réglages de l'application, champ « Adresse du PC ».</p><div id="ips"></div></div>
+<div class="sec"><h2>Adresse à saisir sur le téléphone</h2><p>Dans Réglages de l'application, champ « Adresse du PC ».</p><div id="ips"></div><div id="pinbox" hidden><p style="margin-top:14px">Code d'appairage, à saisir une fois dans les Réglages du téléphone (champ « Code »). Il empêche un autre appareil du Wi-Fi de prendre la place d'une caméra.</p><div class="addr"><span class="nm">Code</span><code id="pin"></code><button data-c="pin">Copier</button></div></div></div>
 <div class="sec"><h2>Adresses des Sources Navigateur dans OBS</h2><p>Une source par téléphone. Largeur 1920, hauteur 1080, et cochez « Contrôler l'audio via OBS ». Le numéro de caméra se règle dans l'application du téléphone.</p><div id="obsl"></div></div>
 <div class="sec"><h2>Démarrage</h2><ol><li>Ajoutez la Source Navigateur dans OBS avec l'adresse ci-dessus.</li><li>Sur le téléphone, saisissez l'adresse du PC puis touchez le bouton rouge.</li><li>Le téléphone passe en EN DIRECT quand OBS reçoit l'image.</li></ol></div>
 <details><summary>L'image saccade ?</summary><ul>
 <li><b>Téléphone :</b> l'application affiche en direct la cause (processeur, réseau ou lumière). Suivez le conseil affiché en haut de l'écran.</li>
 <li><b>Réseau :</b> utilisez le Wi-Fi 5 GHz près du routeur, ou le partage de connexion USB. Le PC de préférence en câble.</li>
 <li><b>OBS :</b> réglez les images par seconde sur 30 (Paramètres, Vidéo) et activez l'accélération matérielle (Paramètres, Avancé).</li>
-<li><b>Tampon :</b> ajoutez <code class="i">?delay=250</code> à l'adresse OBS pour une image plus fluide (un peu plus de latence), ou <code class="i">?delay=50</code> pour plus de réactivité. Par défaut : 100 ms.</li>
+<li><b>Tampon :</b> ajoutez <code class="i">?delay=300</code> à l'adresse OBS pour une image plus fluide (un peu plus de latence), ou <code class="i">?delay=100</code> pour plus de réactivité. Par défaut : 180 ms.</li>
 <li><b>Mesures côté OBS :</b> ajoutez <code class="i">?debug=1</code> à l'adresse pour afficher ce qu'OBS reçoit.</li></ul></details>
 
 </div>
@@ -203,6 +203,7 @@ const rm={};(i.rooms||[]).forEach(x=>rm[x.room]=x);
 const h=[1,2,3,4].map(n=>{const room=n===1?'main':'cam'+n,u=i.obs+(n===1?'':'?room='+room),x=rm[room]||{};
   return '<div class="addr"><span class="nm">Caméra '+n+'</span><code>'+u+'</code><span class="st">'+(x.publisher?'● téléphone ':'')+(x.viewer?'● OBS':'')+'</span><button data-t="'+u+'">Copier</button></div>'}).join('');
 if(h!==window.lastObs){window.lastObs=h;$('obsl').innerHTML=h}
+if(i.pin){$('pinbox').hidden=false;$('pin').textContent=i.pin}
 $('ips').innerHTML=i.addresses.map(a=>'<div class="addr"><code>'+a+'</code><button data-t="'+a+'">Copier</button></div>').join('')||'<div class="empty">Aucun réseau détecté. Connectez le PC au Wi-Fi ou activez le partage de connexion USB du téléphone.</div>';
 $('p').classList.toggle('on',!!i.publishers);$('pt').textContent=i.publishers?'Connecté':'En attente';
 $('o').classList.toggle('on',!!i.viewers);$('ot').textContent=i.viewers?'Connecté':'En attente';

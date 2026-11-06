@@ -1,12 +1,16 @@
 <!doctype html><meta charset="utf-8"><title>TPR Live - OBS</title>
 <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}
+#msg{position:fixed;left:0;right:0;bottom:0;font:600 18px/1.4 system-ui,sans-serif;color:#fff;background:rgba(200,60,50,.9);padding:10px 16px;display:none}
 #dbg{position:fixed;left:8px;top:8px;font:14px/1.4 monospace;color:#0f0;background:rgba(0,0,0,.65);padding:6px 10px;white-space:pre;display:none}</style>
-<video id="v" autoplay playsinline></video><div id="dbg"></div>
+<video id="v" autoplay playsinline></video><div id="dbg"></div><div id="msg"></div>
 <script>
 const P=new URLSearchParams(location.search),room=P.get('room')||'main';
 /* Tampon anti-saccades (ms). 0 = latence minimale mais l'image saccade au moindre aléa du Wi-Fi.
-   100 ms par défaut. Modifiable : obs.html?delay=80 (plus réactif) ou ?delay=300 (plus fluide). */
-const DELAY=Math.max(0,+(P.get('delay')||100));
+   180 ms par défaut (le Wi-Fi a de la gigue : 100 ms était trop juste). Modifiable : obs.html?delay=100 (plus réactif) ou ?delay=300 (plus fluide).
+   ?code=123456 : seulement si cette page tourne sur un autre appareil que le PC (le PC lui-même n'a pas besoin de code). */
+const DELAY=Math.max(0,+(P.get('delay')||180)),CODE=P.get('code')||'';
+const MYID=Math.random().toString(36).slice(2)+Date.now().toString(36);   /* identifie cette page : un rechargement n'est pas un « autre appareil » */
+const note=t=>{msg.textContent=t;msg.style.display=t?'block':'none'};
 let ws,pc,q=Promise.resolve(),prev;
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const isLive=()=>!!pc&&pc.connectionState==='connected';
@@ -32,10 +36,15 @@ async function handle(m){
   else if(m.type==='publisher-left'){if(pc)pc.close();pc=null;v.srcObject=null;act();}
 }
 function connect(){
-  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir()});
-  ws.onclose=()=>setTimeout(connect,1000);
-  ws.onmessage=e=>{q=q.then(()=>handle(JSON.parse(e.data))).catch(console.error)};
+  const w=ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  w.onopen=()=>{note('');sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir(),id:MYID,code:CODE})};
+  w.onclose=e=>{
+    if(w!==ws)return;                       /* ancienne connexion : la nouvelle est déjà en place */
+    if(e.code===4000)return;                /* remplacée par cette même page : ne pas se reconnecter */
+    if(e.code===4001){note('TPR Live : cette caméra est déjà reçue par une autre source OBS ou un autre onglet. Fermez l\'autre.');return setTimeout(connect,3000)}   /* le nouveau venu attend, il ne chasse personne */
+    if(e.code===4003){note('TPR Live : code d\'appairage manquant ou incorrect (adresse ?code=… dans la fenêtre TPR Live).');return setTimeout(connect,10000)}
+    setTimeout(connect,1000)};
+  w.onmessage=e=>{q=q.then(()=>handle(JSON.parse(e.data))).catch(console.error)};
 }
 connect();
 /* Mesures de réception : toujours envoyées au PC (fenêtre TPR Live) ; affichées dans OBS seulement avec ?debug=1 */

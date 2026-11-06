@@ -1,8 +1,6 @@
 name: Build APK
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:   # lancement à la main seulement : release.yml compile déjà l'APK à chaque envoi sur main
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -16,8 +14,12 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Build
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
-          mkdir -p ~/.android && cp mobile/signing/debug.keystore ~/.android/debug.keystore
+          mkdir -p ~/.android
+          # clé privée gardée dans les secrets GitHub (ANDROID_KEYSTORE_B64) ; à défaut, ancienne clé du dépôt
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ~/.android/debug.keystore; else cp mobile/signing/debug.keystore ~/.android/debug.keystore; fi
           mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html
           cd mobile
           npm install

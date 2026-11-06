@@ -111,7 +111,7 @@ class Streams{
     if(s&&s.url!==url){this.kill(id);s=null}
     if(!s){
       const p=spawn(ffmpegPath(),['-hide_banner','-loglevel','error','-rtsp_transport','tcp','-fflags','nobuffer','-flags','low_delay','-i',url,
-        '-an','-vf','scale=960:-2','-r','10','-c:v','mjpeg','-q:v','6','-f','mpjpeg','-boundary_tag','frame','pipe:1'],{stdio:['ignore','pipe','pipe']});
+        '-an','-vf','scale=960:-2','-r','10','-c:v','mjpeg','-q:v','6','-f','mpjpeg','-boundary_tag','frame','pipe:1'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
       s={url,p,clients:new Set(),err:'',got:false,timer:null};this.m.set(id,s);
       p.stdout.on('data',d=>{s.got=true;for(const r of s.clients){if(r.writableLength>1<<21){r.destroy();s.clients.delete(r)}else r.write(d)}});
       p.stderr.on('data',d=>{s.err=(s.err+d).slice(-600)});
@@ -140,6 +140,7 @@ const pub=c=>({id:c.id,name:c.name,host:c.host,port:c.port,user:c.user||'',hasPa
 function mount(app,express,opts={}){
   const db=store(opts.dataDir||process.env.TPR_DATA||path.join(os.homedir(),'.tpr-live'));
   const streams=new Streams(),sessions=new Map(),stops=new Map();
+  process.once('exit',()=>streams.killAll());   /* filet de sécurité : ffmpeg ne survit jamais à l'application */
   const bad=(r,code,msg)=>r.status(code).json({error:msg});
   const ok=(r,o={})=>r.json({ok:true,...o});
   const guard=(q,r,n)=>isLocalReq(q)?n():bad(r,403,'Réservé au PC qui exécute TPR Live.');

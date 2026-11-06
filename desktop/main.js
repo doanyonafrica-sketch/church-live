@@ -1,9 +1,12 @@
 const {app,BrowserWindow,dialog,Menu}=require('electron');
-const {createServer}=require('./server/server');
+const {createServer,loadPin}=require('./server/server');
 let srv;
 const stopServer=()=>{try{srv&&srv.shutdown&&srv.shutdown()}catch{}};
+/* Une seule instance : un 2e lancement caché laisserait un TPR Live.exe actif et bloquerait la mise à jour */
+if(!app.requestSingleInstanceLock())app.quit();
+process.on('exit',stopServer);
 app.whenReady().then(()=>{
-  srv=createServer({dataDir:app.getPath('userData')});
+  srv=createServer({dataDir:app.getPath('userData'),pin:loadPin(app.getPath('userData'))});
   srv.on('error',e=>{dialog.showErrorBox('TPR Live','Impossible de démarrer le serveur (port 3000 déjà utilisé ?) : '+e.message);app.quit()});
   srv.listen(3000,'0.0.0.0',()=>{
     Menu.setApplicationMenu(null);
@@ -25,4 +28,5 @@ app.whenReady().then(()=>{
 });
 app.on('before-quit',stopServer);
 app.on('will-quit',stopServer);
+app.on('quit',stopServer);
 app.on('window-all-closed',()=>app.quit());

@@ -23,12 +23,13 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   assert(!view2.q.some(m=>m.type==='publisher-left'),'OBS non prévenu d\'une coupure brève du téléphone');
   assert(pub2.q.some(m=>m.type==='viewer-joined'&&m.keep===true),'téléphone informé que OBS garde le flux (keep)');
   view2.close();pub2.close();await wait(100);
-  /* deux téléphones sur la même caméra : le premier est remplacé (code 4000), les autres caméras ne sont pas touchées */
-  const pA=await open(port,'publisher','camX'),pO=await open(port,'publisher','camY');let codeA=null;pA.on('close',c=>{codeA=c});
-  const pB=await open(port,'publisher','camX');await wait(200);
-  assert(codeA===4000,'premier téléphone remplacé avec le code 4000, reçu : '+codeA);
+  /* deux téléphones sur la même caméra : le NOUVEAU est refusé (4001), celui qui est en ligne n'est pas coupé */
+  const pA=await open(port,'publisher','camX'),pO=await open(port,'publisher','camY');let codeA=null,codeB=null;pA.on('close',c=>{codeA=c});
+  const pB=await open(port,'publisher','camX');pB.on('close',c=>{codeB=c});await wait(200);
+  assert(codeA===null&&pA.readyState===1,'le premier téléphone reste connecté');
+  assert(codeB===4001,'le nouveau est refusé avec le code 4001, reçu : '+codeB);
   assert(pO.readyState===1,'une autre caméra reste connectée');
-  pO.close();pB.close();
+  pO.close();pA.close();
   /* statistiques : le téléphone et OBS les envoient, le PC les lit via /info */
   const sp=await open(port,'publisher','camS'),sv=await open(port,'viewer','camS');
   sp.send(JSON.stringify({type:'stats',cam:2,fps:30,mbps:2.9,res:'1280×720<b>',rssi:-58,battery:80,charging:true,hack:'x'}));

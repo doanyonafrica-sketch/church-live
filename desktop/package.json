@@ -38,6 +38,9 @@
     },
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
-    ]
+    ],
+    "nsis": {
+      "include": "build/installer.nsh"
+    }
   }
 }

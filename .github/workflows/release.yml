@@ -1,11 +1,42 @@
 name: Release
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths-ignore: ['**.md', '.gitignore']   # un simple changement de texte ne publie pas de version
+    tags: ['v*']                            # une étiquette posée à la main publie toujours exactement ce numéro
+concurrency:
+  group: release
+  cancel-in-progress: false                 # deux envois rapprochés : l'un après l'autre, jamais deux numéros identiques
 permissions:
   contents: write
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      v: ${{ steps.v.outputs.v }}
+      skip: ${{ steps.v.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        name: Numéro de version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          elif [ -n "$(git tag --points-at HEAD 'v*')" ]; then
+            # ce commit porte déjà une étiquette de version : c'est elle qui publie, inutile de publier deux fois
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          else
+            LAST=$(git tag -l 'v*' --sort=-v:refname | head -1); LAST="${LAST#v}"; LAST="${LAST:-1.0.0}"
+            IFS=. read -r MA MI PA <<< "$LAST"
+            V="$MA.$MI.$((PA+1))"
+          fi
+          echo "Version publiée : $V"
+          echo "v=$V" >> "$GITHUB_OUTPUT"
   apk:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +48,14 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Build APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
-          mkdir -p ~/.android && cp mobile/signing/debug.keystore ~/.android/debug.keystore
+          mkdir -p ~/.android
+          # clé privée gardée dans les secrets GitHub (ANDROID_KEYSTORE_B64) ; à défaut, ancienne clé du dépôt
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ~/.android/debug.keystore; else cp mobile/signing/debug.keystore ~/.android/debug.keystore; fi
           mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html
-          sed -i "s/const VERSION='dev'/const VERSION='${GITHUB_REF_NAME#v}'/" mobile/www/index.html
+          sed -i "s/const VERSION='dev'/const VERSION='${{ needs.version.outputs.v }}'/" mobile/www/index.html
           cd mobile
           npm install
           npx cap add android
@@ -30,7 +65,7 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><application#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cp patch/MainActivity.java android/app/src/main/java/africa/doanyon/churchlive/MainActivity.java
-          VER="${GITHUB_REF_NAME#v}"; IFS=. read -r MA MI PA <<< "$VER"
+          VER="${{ needs.version.outputs.v }}"; IFS=. read -r MA MI PA <<< "$VER"
           sed -i "s/versionCode 1/versionCode $((10#$MA*10000+10#$MI*100+10#$PA))/; s/versionName \"1.0\"/versionName \"$VER\"/" android/app/build.gradle
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../../church-live.apk
@@ -39,7 +74,8 @@ jobs:
           name: church-live-apk-release
           path: church-live.apk
   windows:
-    needs: apk
+    needs: [version, apk]
+    if: needs.version.outputs.skip != 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,12 +94,13 @@ jobs:
           mkdir desktop/server && cp server/server.js server/camera.js desktop/server/ && cp -r server/public desktop/server/
           # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
           cp apk/church-live.apk desktop/server/public/church-live.apk
-          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > desktop/server/public/apk-version.json
+          printf '{"version":"%s"}' "${{ needs.version.outputs.v }}" > desktop/server/public/apk-version.json
           cd desktop && npm install
-          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          npm version "${{ needs.version.outputs.v }}" --no-git-tag-version --allow-same-version
           npx electron-builder --win --publish always
   attach:
-    needs: windows
+    needs: [version, windows]
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -72,4 +109,5 @@ jobs:
           path: apk
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.version.outputs.v }}
           files: apk/church-live.apk

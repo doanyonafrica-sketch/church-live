@@ -16,6 +16,12 @@ Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » 
 4. Mode USB : Paramètres du téléphone → Partage de connexion → Partage par USB, puis utiliser l'adresse affichée par le PC.
 5. Autoriser TPR Live dans le pare-feu Windows (réseau privé).
 
+## Code d'appairage (nouveau)
+La fenêtre du PC affiche un **code à 6 chiffres**. Saisissez-le **une seule fois** dans les Réglages du téléphone (champ « Code d'appairage »). Sans lui, un autre appareil du Wi-Fi ne peut pas se faire passer pour une caméra ou pour OBS. OBS sur le PC lui-même n'en a pas besoin ; pour une source OBS sur un autre ordinateur, ajoutez `?code=123456` à l'adresse. Après dix erreurs, l'appareil est bloqué une minute. Pour désactiver : variable d'environnement `TPR_NO_PIN=1` avant de lancer le serveur. **Les anciens APK ne connaissent pas le code : mettez le téléphone à jour (ou désactivez le code le temps de la mise à jour).**
+
+## Une place = un appareil (nouveau)
+Une caméra (et une Source OBS) ne peut être tenue que par un appareil à la fois. Si un second téléphone choisit le même numéro, **c'est lui qui est refusé** : le direct en cours n'est jamais coupé. Une seconde page OBS sur la même caméra affiche un message rouge et attend. Un appareil qui revient après une coupure Wi-Fi reprend sa place seul.
+
 ## Plusieurs téléphones
 Chaque téléphone choisit un **numéro de caméra** (Réglages). Dans OBS, ajoutez une Source Navigateur par caméra : la caméra 1 utilise `obs.html`, les autres `obs.html?room=cam2`, `?room=cam3`, `?room=cam4` (adresses à copier dans la fenêtre du PC). Deux téléphones ne peuvent pas partager le même numéro. Chaque caméra consomme du réseau (≈ 3 Mb/s) et du processeur sur le PC.
 
@@ -38,12 +44,18 @@ Onglet **Caméras PTZ** dans la fenêtre du PC : image en direct, rotation (haut
 `cd server && npm install && npm test` ; `npm start` pour lancer le serveur seul.
 
 ## Publier une nouvelle version (mises à jour automatiques)
-1. `git add . && git commit -m "description" && git push`
-2. `git tag v1.0.1 && git push origin v1.0.1` (numéro supérieur au précédent). **Sans cette étiquette (tag), aucune mise à jour n'est publiée.**
-3. GitHub compile l'APK, l'intègre à l'installeur Windows, publie une **Release** avec les deux fichiers.
+1. `git add . && git commit -m "description" && git push` : **c'est tout.** Chaque envoi sur `main` publie seul la version suivante (1.0.1, 1.0.2…) : GitHub compile l'APK, l'intègre à l'installeur Windows et publie une **Release** avec les deux fichiers. Les changements qui ne touchent que des fichiers `.md` ne publient rien.
+2. Pour choisir soi-même le numéro (par exemple 1.1.0) : `git tag v1.1.0 && git push origin v1.1.0` publie exactement ce numéro.
 - **PC Windows** : vérifie au démarrage puis toutes les 30 minutes, télécharge seul et propose de redémarrer (à ne pas faire pendant un direct).
 - **Téléphone** : à l'ouverture et à chaque connexion au PC, il demande la version de l'APK au PC (aucun Internet nécessaire). Si elle est plus récente, un bouton « Nouvelle version disponible » apparaît : un appui télécharge l'APK et ouvre l'écran d'installation Android (un appui sur « Mettre à jour »). La première fois, Android demande d'autoriser l'installation depuis TPR Live.
 - Le dépôt GitHub doit être **public** (sinon le PC ne peut pas vérifier les mises à jour).
+
+## Clé de signature privée (recommandé)
+La clé du dossier `mobile/signing/` est publique (le dépôt l'est) : n'importe qui pourrait signer un faux APK qui s'installerait par-dessus. Pour y remédier une fois :
+1. `keytool -genkeypair -keystore tpr.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=TPR Live"`
+2. `base64 -w0 tpr.keystore` (sur Windows : `certutil -encode`), puis copier le résultat dans un **secret GitHub** nommé `ANDROID_KEYSTORE_B64` (Settings → Secrets and variables → Actions).
+3. Garder `tpr.keystore` en lieu sûr, **jamais dans le dépôt**. Publier une nouvelle version (tag). Désinstaller l'ancien APK **une seule fois** (la signature change), puis installer le nouveau.
+Tant que le secret n'existe pas, la compilation utilise l'ancienne clé comme avant.
 
 ## Important : première installation après cette correction
 L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.
