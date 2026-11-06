@@ -2,8 +2,6 @@ const {app,BrowserWindow,dialog,Menu}=require('electron');
 const {createServer,loadPin}=require('./server/server');
 let srv;
 const stopServer=()=>{try{srv&&srv.shutdown&&srv.shutdown()}catch{}};
-/* Une seule instance : un 2e lancement caché laisserait un TPR Live.exe actif et bloquerait la mise à jour */
-if(!app.requestSingleInstanceLock())app.quit();
 process.on('exit',stopServer);
 app.whenReady().then(()=>{
   srv=createServer({dataDir:app.getPath('userData'),pin:loadPin(app.getPath('userData'))});
