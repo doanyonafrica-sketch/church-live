@@ -15,6 +15,14 @@
 .bar{display:block;position:relative;width:min(420px,40vw);height:.7vh;min-height:4px;margin:.6vh 0;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
 .bar::after{content:"";position:absolute;top:0;bottom:0;width:40%;border-radius:3px;background:#f4eee3;animation:sl 1.4s ease-in-out infinite}
 @keyframes sl{0%{left:-40%}100%{left:100%}}
+
+/* ===== Refonte visuelle : titre en serif doré, fond sombre sous le texte ===== */
+.wt{padding:10vh 5vw 5vh;gap:1.1vh;background:linear-gradient(transparent,rgba(2,22,26,.92) 45%)}
+.wt h1{font:600 4.6vh/1.1 "Iowan Old Style","Palatino Linotype",Constantia,Cambria,Georgia,serif;letter-spacing:.01em;text-transform:none;color:#e8c47a}
+.wt h1::after{content:"";display:block;width:9vh;height:2px;margin:1.6vh auto .6vh;background:#e8c47a;opacity:.7}
+.wt b{font-size:3.2vh;font-weight:500;color:#f3ecd9;text-shadow:none}
+.wt span{color:#cfe6e2}
+#msg{background:rgba(176,46,40,.94);border-top:2px solid #ffb3ac}
 </style>
 <video id="v" autoplay playsinline></video>
 <div id="w"><video id="wv" muted loop playsinline autoplay preload="auto"><source src="attente.webm" type="video/webm"><source src="attente.mp4" type="video/mp4"></video>

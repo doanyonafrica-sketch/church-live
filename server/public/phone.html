@@ -1,9 +1,9 @@
 <!doctype html><html lang="fr"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#140d12"><title>TPR Live</title>
+<meta name="theme-color" content="#041a1f"><title>TPR Live</title>
 <style>
-:root{color-scheme:dark;--bg:#140d12;--surf:#22161e;--surf2:#33232d;--line:rgba(244,238,227,.14);--text:#f4eee3;--mute:#b3a4ad;--live:#ff5a4e;--ok:#7bd88f;--warn:#f0b44c;--rail:104px;--dock:176px;
---serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--sans:system-ui,"Segoe UI",Roboto,sans-serif}
+:root{color-scheme:dark;--bg:#041a1f;--gold:#e8c47a;--surf:#0a2a30;--surf2:#10383f;--line:rgba(243,236,217,.14);--text:#f3ecd9;--mute:#9fbab7;--live:#ff5a4e;--ok:#6fdc9a;--warn:#f2c260;--rail:104px;--dock:176px;
+--serif:"Iowan Old Style","Palatino Linotype",Constantia,Cambria,Georgia,serif;--sans:system-ui,"Segoe UI",Roboto,sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:16px/1.4 var(--sans);overflow:hidden}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
@@ -122,6 +122,34 @@ label{display:block;font-size:14px;font-weight:600;margin-bottom:5px}
 input[type=text],select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:16px var(--sans)}
 #diag{margin:8px 18px 4px;background:var(--bg);border-radius:12px;padding:12px;font-size:14px;color:var(--mute)}
 #ver{padding:8px 18px 16px;font-size:12px;color:var(--mute)}
+
+/* ===== Refonte visuelle : vert-bleu profond de l'aigle, crème et or ===== */
+#dock{background:rgba(4,26,31,.74);border:1px solid rgba(232,196,122,.3);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);box-shadow:0 12px 32px rgba(0,0,0,.5);gap:14px}
+.ctl i{background:rgba(243,236,217,.08);transition:background .15s,transform .12s}
+.ctl:active i{transform:scale(.93)}
+.ctl.on i{background:var(--gold);border-color:var(--gold);color:#1a1204}
+#go{border-color:var(--gold)}
+#go b{box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 0 18px rgba(255,90,78,.35)}
+#goctl{color:var(--gold)}
+#pill,#air,#chips span,#msg span,#zoomwrap{background:rgba(4,26,31,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#chips span{border:1px solid var(--line)}
+#vu{background:rgba(243,236,217,.12)}
+#scan,#found button,#upd a{background:var(--gold);color:#1a1204;border-radius:12px}
+#found button{margin-top:8px}
+#alert{border-radius:12px}
+.wt{background:linear-gradient(transparent,rgba(2,22,26,.9) 45%);padding-top:48px;gap:6px}
+.wt h1{font:600 17px/1.2 var(--serif);letter-spacing:.01em;text-transform:none;color:var(--gold)}
+.wt h1::after{content:"";display:block;width:40px;height:2px;margin:9px auto 3px;background:var(--gold);opacity:.7}
+.wt b{font:500 24px/1.2 var(--serif);color:var(--text)}
+.wt span{color:#cfe6e2}
+dialog{border-radius:24px;background:linear-gradient(#0c333a,#072227);border-color:rgba(232,196,122,.28);box-shadow:0 28px 70px rgba(0,0,0,.65)}
+.sh{position:sticky;top:0;z-index:1;background:#0c333a;padding:20px 20px 14px;border-bottom:1px solid var(--line)}
+.sh h2{font-size:27px}.sh button{color:var(--gold)}
+.fld{padding:16px 20px;border-bottom:1px solid var(--line)}
+label{color:var(--gold)}
+input[type=text],select{background:rgba(0,0,0,.3);border-radius:12px}
+#diag{margin:16px 20px 6px;background:rgba(0,0,0,.3);border-left:3px solid var(--gold);border-radius:4px 14px 14px 4px}
+#ver{padding:8px 20px 20px}
 </style>
 <body><div id="app">
 <div id="stage">
@@ -154,6 +182,7 @@ input[type=text],select{width:100%;background:var(--bg);color:var(--text);border
   <div class="fld"><label for="mvol">Volume du micro : <output id="mvo">50</output> %</label><input type="range" id="mvol" min="0" max="100" step="5" style="width:100%;accent-color:var(--text)"><p class="hint">Baissez si le son est trop fort ou si ça « siffle » (retour entre le téléphone et les haut-parleurs de la salle).</p></div>
   <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
+  <div class="fld"><label for="fluid">Image fluide de nuit</label><select id="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité (recommandé la nuit)</option><option value="max">Fluidité maximale (image plus sombre)</option></select><p class="hint">Quand la lumière baisse, certains téléphones passent de 30 à 10 images par seconde et l'image « rame ». Ces réglages demandent à la caméra de garder 30 images par seconde. Pris en compte au prochain démarrage du direct. Tous les téléphones ne les acceptent pas.</p><p class="hint" id="fluidinfo"></p></div>
   <div id="diag">Le diagnostic apparaît pendant le direct.</div>
   <div id="ver"></div>
 </dialog>
@@ -177,7 +206,7 @@ setAir(null);
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
 $('cam').value=localStorage.cam||'1';$('code').value=localStorage.code||'';
 const TID=localStorage.tid||(localStorage.tid=Math.random().toString(36).slice(2)+Date.now().toString(36));   /* identifie CE téléphone : il reprend sa place après une coupure */
-$('q').value=localStorage.q||'720';$('codec').value=localStorage.codec||'h264';
+$('q').value=localStorage.q||'720';$('fluid').value=localStorage.fluid||'off';$('codec').value=localStorage.codec||'h264';
 $('mvol').value=localStorage.mvol||50;$('mvo').textContent=$('mvol').value;
 $('ver').textContent=VERSION==='dev'?'Version de développement':'TPR Live '+VERSION;
 const ROOM=()=>$('cam').value==='1'?'main':'cam'+$('cam').value;
@@ -185,17 +214,35 @@ const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
 const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
 const openSet=()=>$('sheet').showModal();
-['addr','q','codec','cam','code'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
+['addr','q','codec','cam','code','fluid'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
 $('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
 $('mvol').oninput=()=>{localStorage.mvol=$('mvol').value;$('mvo').textContent=$('mvol').value;applyGain()};
 if(!$('addr').value)msg('Saisissez l\'adresse du PC dans les réglages.');
 
+/* Image fluide de nuit : demande à la caméra de garder 30 images/s (exposition plafonnée à 1/30 s). Chaque réglage est essayé séparément : ceux que le téléphone refuse sont ignorés. */
+let EXTRA=[];
+async function lowLight(vt,c){
+  EXTRA=[];const m=$('fluid').value,info=$('fluidinfo');
+  if(m==='off'){info.textContent='';return}
+  const a=[{frameRate:30}],ok=['30 images/s'];
+  if(c.exposureMode&&c.exposureMode.includes('continuous'))a.push({exposureMode:'continuous'});
+  if(m==='on'&&c.exposureCompensation&&c.exposureCompensation.max>0){a.push({exposureCompensation:c.exposureCompensation.max});ok.push('luminosité augmentée')}
+  if(m==='max'&&c.exposureTime&&c.exposureMode&&c.exposureMode.includes('manual')){
+    const t=Math.min(c.exposureTime.max,Math.max(c.exposureTime.min,333));
+    a.push({exposureMode:'manual'},{exposureTime:t});ok.push('exposition limitée à 1/30 s');
+    if(c.iso)a.push({iso:c.iso.max})}
+  else if(m==='max')ok.push('exposition manuelle indisponible (mode « priorité fluidité » appliqué)');
+  EXTRA=a;
+  try{await vt.applyConstraints({advanced:a});info.textContent='Sur ce téléphone : '+ok.join(', ')+'.'}
+  catch{EXTRA=[];info.textContent='Ce téléphone refuse ces réglages. Éclairez davantage la scène.'}
+}
 async function cam(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
   const h=+$('q').value;
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30,max:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
   const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};
   try{vt.contentHint='motion'}catch{}
+  await lowLight(vt,c);
   setNocam(false);vt.onended=vt.onmute=()=>setNocam(true);vt.onunmute=()=>setNocam(false);   /* caméra coupée ou prise par une autre application : on le dit */
   $('v').srcObject=stream;document.body.classList.add('cam');
   $('torch').classList.toggle('show',!!c.torch);$('zoomwrap').classList.toggle('show',!!c.zoom);
@@ -261,7 +308,7 @@ async function offer(){
 function diagnose(fps,lim,loss,h){
   if(lim==='cpu')return 'Le téléphone est surchargé. Choisissez 480p ou la compression H.264 dans les réglages, et laissez-le refroidir.';
   if(lim==='bandwidth'||loss>.03)return 'Le réseau est instable. Rapprochez-vous du routeur (Wi-Fi 5 GHz) ou utilisez le partage de connexion USB.';
-  if(fps&&fps<24)return 'La caméra ne fournit que '+Math.round(fps)+' images par seconde : la lumière est insuffisante. Éclairez la scène.';
+  if(fps&&fps<24)return 'La caméra ne fournit que '+Math.round(fps)+' images par seconde : la lumière est insuffisante. Éclairez la scène ou activez « Image fluide de nuit » dans les Réglages.';
   if(h&&peakH&&h<peakH/LV[lvl].f*.75)return 'Qualité réduite à '+h+'p (au départ : '+peakH+'p) : le réseau ou le processeur du téléphone est limité.';
   return '';
 }
@@ -317,8 +364,8 @@ $('go').onclick=async()=>{
 $('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
   if(pc)for(const x of pc.getSenders()){const t=(outS||stream).getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}};
 $('mute').onclick=()=>{muted=!muted;applyGain();$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro'};
-$('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});$('torch').classList.toggle('on',on)};
-$('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value}]}).catch(()=>{});
+$('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on},...EXTRA]}).catch(()=>{});$('torch').classList.toggle('on',on)};
+$('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value},...EXTRA]}).catch(()=>{});
 let scanning=false,fails=0,busy=0,peakH=0;
 function discover(){
   if(scanning)return;
