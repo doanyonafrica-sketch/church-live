@@ -59,3 +59,10 @@ Tant que le secret n'existe pas, la compilation utilise l'ancienne clé comme av
 
 ## Important : première installation après cette correction
 L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.
+
+## Dernières améliorations (fluidité, son, interface)
+
+- **Image plus fluide** : le débit maximal est un peu plus bas (720p = 2,5 Mb/s) et la qualité s'adapte seule. Si le réseau ou le processeur du téléphone n'arrive pas à suivre, la résolution et le débit baissent avant que l'image ne rame, puis remontent quand ça va mieux. Le tampon anti-saccades d'OBS passe à 250 ms (`obs.html?delay=150` plus réactif, `?delay=400` plus fluide).
+- **Son** : le micro est filtré (basses parasites), baissé par défaut (réglage « Volume du micro », 50 %) et limité (plus de pics trop forts). Si ça « siffle » encore : dans OBS, mettre l'écoute audio de la source sur « Écoute coupée » (clic droit sur la source dans le mélangeur audio), ou ajouter `?vol=0.6` à l'adresse de la source.
+- **Interface téléphone** : l'image de la caméra occupe tout l'écran. Les commandes flottent sur le côté, se cachent seules pendant le direct (toucher l'écran pour les faire revenir), et la barre « à l'antenne » est devenue une petite pastille.
+- **Écran d'attente** (`attente.mp4` / `attente.webm` dans `server/public`) : la vidéo de l'aigle tourne en fond, avec la date, un texte d'état et une barre de chargement, sur le téléphone tant que la caméra n'est pas lancée ou ne fournit plus d'image, et dans OBS tant qu'aucune image n'arrive (caméra absente, connexion en cours, image figée). Pour la changer, remplacer ces deux fichiers (idéalement en 16:9, 1920×1080).

@@ -54,7 +54,7 @@ jobs:
           mkdir -p ~/.android
           # clé privée gardée dans les secrets GitHub (ANDROID_KEYSTORE_B64) ; à défaut, ancienne clé du dépôt
           if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ~/.android/debug.keystore; else cp mobile/signing/debug.keystore ~/.android/debug.keystore; fi
-          mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html
+          mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html && cp server/public/attente.mp4 server/public/attente.webm mobile/www/
           sed -i "s/const VERSION='dev'/const VERSION='${{ needs.version.outputs.v }}'/" mobile/www/index.html
           cd mobile
           npm install
