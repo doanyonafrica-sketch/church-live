@@ -1,6 +1,6 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {WebSocketServer}=require('ws');
-const {isLocalAddr,hostOk,originOk}=require('./security');
+const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
 const RELAY=new Set(['offer','answer','candidate']);
 const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','thermal','jitter','buf','dropped','lost'],
   STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
@@ -10,6 +10,21 @@ const clean=m=>{const o={};
   for(const k of STR)if(typeof m[k]==='string')o[k]=m[k].replace(/[<>&"'`]/g,'').slice(0,200);
   for(const k of BOOL)if(typeof m[k]==='boolean')o[k]=m[k];
   o.t=Date.now();return o};
+/* Réglages du téléphone modifiables depuis le PC. Valeurs strictement vérifiées : le PC les envoie, le téléphone les revérifie. */
+const SETK={q:[480,720,1080],prio:['sharp','fluid'],fluid:['off','on','max'],codec:['auto','h264','vp8']};
+const num=(v,a,b)=>typeof v==='number'&&isFinite(v)&&v>=a&&v<=b;
+function cleanSet(m){const o={};if(!m||typeof m!=='object')return o;
+  if(SETK.q.includes(m.q))o.q=m.q;
+  for(const k of['prio','fluid','codec'])if(SETK[k].includes(m[k]))o[k]=m[k];
+  if(Number.isInteger(m.mvol)&&m.mvol>=0&&m.mvol<=100)o.mvol=m.mvol;
+  for(const k of['muted','torch'])if(typeof m[k]==='boolean')o[k]=m[k];
+  if(num(m.zoom,0,100))o.zoom=m.zoom;
+  return o}
+/* Rapport du téléphone : ses réglages actuels et ce que sa caméra sait faire (flash, plage de zoom) */
+function cleanRep(m){const o=cleanSet(m);
+  for(const k of['zmin','zmax','zstep'])if(num(m[k],0,1000))o[k]=m[k];
+  if(typeof m.ctorch==='boolean')o.ctorch=m.ctorch;
+  o.t=Date.now();return o}
 /* Code d'appairage (6 chiffres) : sans lui, n'importe quel appareil du Wi-Fi pourrait se faire passer pour une caméra ou pour OBS.
    Il est créé une fois, enregistré dans le dossier de données du PC et affiché dans la fenêtre TPR Live.
    Désactivable avec la variable d'environnement TPR_NO_PIN=1. Le PC lui-même (127.0.0.1, donc OBS) n'en a pas besoin. */
@@ -49,8 +64,18 @@ function createServer(opts={}){
     r.json({app:'tpr-live',pin:PIN,name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',obs:'http://localhost:'+port+'/obs.html',addresses:ips,viewers:all.filter(x=>live(x.viewer)).length,publishers:all.filter(x=>live(x.publisher)).length,
       cpu:cpuPct(),
       rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
-        stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null}))});});
+        settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null}))});});
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
+  /* Réglages envoyés par la fenêtre du PC à un téléphone. Réservé au PC lui-même (même protection que les caméras IP). */
+  app.post('/api/phone/:room/set',express.json({limit:'2kb'}),(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    const x=rooms.get(String(q.params.room).slice(0,64)),set=cleanSet(q.body&&q.body.set);
+    if(!Object.keys(set).length)return r.status(400).json({ok:false,error:'Réglage invalide.'});
+    if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
+    if(!x.settings)return r.status(409).json({ok:false,error:'Ce téléphone doit être mis à jour pour être réglé depuis le PC.'});
+    send(x.publisher,{type:'set',set});r.json({ok:true,sent:set})});
+  app.use('/api/phone',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
+
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
   hb.unref();const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
@@ -96,6 +121,7 @@ function createServer(opts={}){
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
       /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */
       if(m.type==='onair'){if(role==='viewer'){r.onair=m.value===true;send(r.publisher,{type:'onair',value:r.onair})}return}
+      if(m.type==='settings'){if(role==='publisher')r.settings=cleanRep(m);return}
       if(m.type==='stats'){if(role==='publisher')r.stats=clean(m);return}
       if(m.type==='vstats'){if(role==='viewer')r.vstats=clean(m);return}
       if(!RELAY.has(m.type))return;
@@ -103,7 +129,7 @@ function createServer(opts={}){
     });
     ws.on('close',()=>{
       const r=rooms.get(room);if(!r||r[role]!==ws)return;
-      r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else r.stats=null;
+      r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else{r.stats=null;r.settings=null}
       const other=role==='viewer'?'publisher':'viewer';
       r.t[role]=setTimeout(()=>{
         delete r.t[role];

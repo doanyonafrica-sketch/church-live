@@ -36,3 +36,28 @@ assert(!ev.some(e=>e[1]>2),'jamais plus bas que le niveau 2 (~480p)');
 ctx.prio='sharp';
 assert.deepStrictEqual(run([...rep(30,false),...rep(60,true),...rep(60,false)]),[],'mode netteté : la définition et le débit ne baissent jamais');
 console.log('OK page téléphone (débit, adaptation, netteté, alertes)');
+/* 4) ordres venant du PC : chaque valeur est revérifiée, enregistrée comme un réglage local, et seuls les réglages vidéo modifiés déclenchent une application */
+{
+  const el={q:{value:'720'},codec:{value:'h264'},prio:{value:'sharp'},fluid:{value:'off'},mvol:{value:'50'},mvo:{textContent:'50'}};
+  const log=[],applied=[];
+  const c2={$:id=>el[id],localStorage:{},muted:false,applied,log,applyGain(){log.push('gain')},setMuted(v){c2.muted=v;log.push('muted:'+v)},
+    async setTorch(v){log.push('torch:'+v)},setZoom(v){log.push('zoom:'+v)},async applyChanges(k){applied.push(k.join(','))},reportSet(){log.push('report')}};
+  vm.createContext(c2);vm.runInContext(slice('async function applySet(s){','/* Rapport au PC'),c2);
+  (async()=>{
+    await c2.applySet({q:1080,codec:'vp8',prio:'fluid',fluid:'on',mvol:35,muted:true,torch:true,zoom:3});
+    assert.strictEqual(el.q.value,'1080');assert.strictEqual(el.codec.value,'vp8');assert.strictEqual(el.prio.value,'fluid');assert.strictEqual(el.fluid.value,'on');
+    assert.strictEqual(el.mvol.value,35);assert.strictEqual(c2.localStorage.q,'1080','réglage enregistré comme un réglage local');assert.strictEqual(c2.localStorage.mvol,35);
+    assert.deepStrictEqual(c2.applied,['q,codec,prio,fluid'],'les 4 réglages vidéo modifiés sont appliqués');
+    assert(c2.log.includes('muted:true')&&c2.log.includes('torch:true')&&c2.log.includes('zoom:3'),'micro, flash et zoom appliqués');
+    /* valeurs fausses : rien ne change */
+    c2.applied.length=0;c2.log.length=0;
+    await c2.applySet({q:999,codec:'av1',prio:'x',fluid:'zzz',mvol:500,muted:'oui',torch:'oui',zoom:'3'});
+    assert.strictEqual(el.q.value,'1080');assert.strictEqual(el.codec.value,'vp8');assert.strictEqual(el.mvol.value,35);
+    assert.deepStrictEqual(c2.applied,[''],'rien à appliquer');assert(!c2.log.some(x=>/muted|torch|zoom|gain/.test(x)),'rien n\'est appliqué sur des valeurs fausses');
+    /* même valeur qu'actuellement : pas de redémarrage inutile de la caméra */
+    c2.applied.length=0;await c2.applySet({q:1080,codec:'vp8'});assert.deepStrictEqual(c2.applied,[''],'valeur identique : aucune coupure');
+    await c2.applySet(null);await c2.applySet('x');
+    console.log('OK ordres du PC (vérification, enregistrement, pas de coupure inutile)');
+  })().catch(e=>{console.error(e);process.exit(1)});
+}
+

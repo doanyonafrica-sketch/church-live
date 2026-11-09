@@ -24,6 +24,16 @@ Une caméra (et une Source OBS) ne peut être tenue que par un appareil à la fo
 ## Plusieurs téléphones
 Chaque téléphone choisit un **numéro de caméra** (Réglages). Dans OBS, ajoutez une Source Navigateur par caméra : la caméra 1 utilise `obs.html`, les autres `obs.html?room=cam2`, `?room=cam3`, `?room=cam4` (adresses à copier dans la fenêtre du PC). Deux téléphones ne peuvent pas partager le même numéro. Chaque caméra consomme du réseau (≈ 3 Mb/s) et du processeur sur le PC.
 
+## Fenêtre du PC : vue simple et réglages des téléphones
+Pour chaque caméra, la fenêtre affiche d'abord **un état et une phrase** : « Tout va bien », « À surveiller » ou « Problème », avec le conseil à suivre (rapprocher le téléphone du routeur, brancher la batterie…), puis quatre repères : connexion (Excellente → Mauvaise), batterie, image et durée du direct. Le bouton **Détails techniques** (réglage mémorisé sur le PC) affiche en plus toutes les mesures décrites plus bas.
+
+Sous chaque caméra, **« Régler ce téléphone depuis le PC »** permet de changer sans toucher au téléphone : qualité de l'image, priorité netteté/fluidité, image fluide de nuit, compression, volume du micro, couper/réactiver le micro, flash et zoom (si la caméra du téléphone les propose).
+- **Le téléphone reste maître et garde tous ses réglages et son bouton Démarrer/Terminer.** Un réglage peut être changé sur le téléphone ou sur le PC : le dernier changement fait foi, et le PC affiche toujours la valeur réelle rapportée par le téléphone (toutes les 3 s et à chaque changement).
+- Ces réglages s'appliquent **tout de suite**, y compris ceux de l'écran Réglages du téléphone (avant, certains attendaient le démarrage suivant). Micro, flash, zoom, priorité et image de nuit n'interrompent pas l'image. **Qualité et compression** (et le retour de l'image de nuit à « Normal ») rouvrent la caméra : l'image se fige une ou deux secondes. Si la caméra est **à l'antenne**, le PC demande confirmation avant.
+- Le numéro de caméra, l'adresse du PC et le code d'appairage ne se règlent que sur le téléphone.
+- Le téléphone n'est joignable qu'**une fois le direct démarré** (c'est là qu'il se connecte au PC) : démarrez-le, puis réglez depuis le PC.
+- Seul le PC lui-même peut envoyer ces ordres (même protection que les caméras IP) ; le téléphone revérifie chaque valeur reçue. Il faut **mettre à jour le PC et le téléphone** : un ancien APK continue de fonctionner, mais le PC indique qu'il doit être mis à jour pour être réglé à distance.
+
 ## Mesures dans la fenêtre du PC
 La fenêtre TPR Live affiche, pour chaque caméra : image et images/s, débit (Mb/s), compression, latence et pertes réseau, signal Wi-Fi (dBm) et vitesse de liaison, batterie du téléphone, durée du direct, micro, cause d'une éventuelle limitation, et le conseil de diagnostic. Elle affiche aussi ce que **OBS reçoit réellement** (images/s, paquets et images perdus, gigue, tampon) et la charge du processeur du PC. Le signal Wi-Fi n'est pas disponible en partage de connexion USB.
 

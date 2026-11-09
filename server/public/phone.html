@@ -180,10 +180,10 @@ input[type=text],select{background:rgba(0,0,0,.3);border-radius:12px}
   <div class="fld"><label for="code">Code d'appairage</label><input type="text" id="code" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="6 chiffres"><p class="hint">Affiché dans la fenêtre TPR Live sur le PC. À saisir une seule fois.</p></div>
   <div class="fld"><label for="cam">Numéro de cette caméra</label><select id="cam"><option value="1">Caméra 1</option><option value="2">Caméra 2</option><option value="3">Caméra 3</option><option value="4">Caméra 4</option></select><p class="hint">Plusieurs téléphones : donnez un numéro différent à chacun. Chaque numéro a sa propre source dans OBS (adresses affichées dans la fenêtre du PC).</p></div>
   <div class="fld"><label for="mvol">Volume du micro : <output id="mvo">50</output> %</label><input type="range" id="mvol" min="0" max="100" step="5" style="width:100%;accent-color:var(--text)"><p class="hint">Baissez si le son est trop fort ou si ça « siffle » (retour entre le téléphone et les haut-parleurs de la salle).</p></div>
-  <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
+  <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select><p class="hint">Ces réglages sont aussi modifiables depuis la fenêtre TPR Live du PC. Changer la qualité ou la compression pendant le direct coupe l'image une ou deux secondes.</p></div>
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
-  <div class="fld"><label for="prio">Priorité</label><select id="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select><p class="hint">Netteté : l'image reste en haute définition ; si le téléphone ou le réseau peine, ce sont quelques images qui sautent, jamais la définition qui baisse. Fluidité : l'inverse. Pris en compte au prochain démarrage du direct.</p></div>
-  <div class="fld"><label for="fluid">Image fluide de nuit</label><select id="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité (recommandé la nuit)</option><option value="max">Fluidité maximale (image plus sombre)</option></select><p class="hint">Quand la lumière baisse, certains téléphones passent de 30 à 10 images par seconde et l'image « rame ». Ces réglages demandent à la caméra de garder 30 images par seconde. Pris en compte au prochain démarrage du direct. Tous les téléphones ne les acceptent pas.</p><p class="hint" id="fluidinfo"></p></div>
+  <div class="fld"><label for="prio">Priorité</label><select id="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select><p class="hint">Netteté : l'image reste en haute définition ; si le téléphone ou le réseau peine, ce sont quelques images qui sautent, jamais la définition qui baisse. Fluidité : l'inverse. Pris en compte tout de suite.</p></div>
+  <div class="fld"><label for="fluid">Image fluide de nuit</label><select id="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité (recommandé la nuit)</option><option value="max">Fluidité maximale (image plus sombre)</option></select><p class="hint">Quand la lumière baisse, certains téléphones passent de 30 à 10 images par seconde et l'image « rame ». Ces réglages demandent à la caméra de garder 30 images par seconde. Tous les téléphones ne les acceptent pas. Pris en compte tout de suite.</p><p class="hint" id="fluidinfo"></p></div>
   <div id="diag">Le diagnostic apparaît pendant le direct.</div>
   <div id="ver"></div>
 </dialog>
@@ -215,13 +215,13 @@ const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
 const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
 const openSet=()=>$('sheet').showModal();
-['addr','q','codec','prio','cam','code','fluid'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
+['addr','q','codec','prio','cam','code','fluid'].forEach(k=>$(k).onchange=()=>{localStorage[k]=$(k).value.trim();if(running&&['q','codec','prio','fluid'].includes(k))applyChanges([k]);else reportSetSoon()});
 $('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
-$('mvol').oninput=()=>{localStorage.mvol=$('mvol').value;$('mvo').textContent=$('mvol').value;applyGain()};
+$('mvol').oninput=()=>{localStorage.mvol=$('mvol').value;$('mvo').textContent=$('mvol').value;applyGain();reportSetSoon()};
 if(!$('addr').value)msg('Saisissez l\'adresse du PC dans les réglages.');
 
 /* Image fluide de nuit : demande à la caméra de garder 30 images/s (exposition plafonnée à 1/30 s). Chaque réglage est essayé séparément : ceux que le téléphone refuse sont ignorés. */
-let EXTRA=[];
+let EXTRA=[],capsCur={};
 async function lowLight(vt,c){
   EXTRA=[];const m=$('fluid').value,info=$('fluidinfo');
   if(m==='off'){info.textContent='';return}
@@ -261,7 +261,7 @@ async function cam(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
   const h=+$('q').value;
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30,max:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-  const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};
+  const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};capsCur=c;$('torch').classList.remove('on');
   try{vt.contentHint=$('prio').value==='sharp'?'detail':'motion'}catch{}
   await lowLight(vt,c);
   setNocam(false);vt.onmute=()=>setNocam(true);vt.onunmute=()=>setNocam(false);vt.onended=()=>{setNocam(true);scheduleRecover(1500)};
@@ -293,7 +293,7 @@ function connect(){
   if(!running)return;
   const w=ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   let ok=false;
-  w.onopen=()=>{ok=true;fails=0;setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  w.onopen=()=>{ok=true;fails=0;setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
   w.onclose=e=>{if(w!==ws)return;if(running)setAir(null);
     if(e.code===4003&&running){$('go').click();msg('Code d\'appairage manquant ou incorrect. Saisissez celui de la fenêtre TPR Live (Réglages).');alertBox('Code d\'appairage incorrect.');openSet();return}
     /* caméra déjà prise par un AUTRE téléphone : on n'écrase pas son direct, on attend un peu puis on abandonne */
@@ -312,6 +312,7 @@ async function onMsg(m){
   else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:tune(m.sdp)});
   else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
   else if(m.type==='onair')setAir(m.value)
+  else if(m.type==='set')applySet(m.set).catch(()=>{})
   else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');setAir(false);pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}
 }
 /* Évite que l'estimation de débit de Chrome ne démarre bas et ne fasse chuter la qualité : on impose un départ élevé et un plancher
@@ -427,9 +428,78 @@ $('go').onclick=async()=>{
 };
 $('flip').onclick=async()=>{facing=facing==='user'?'environment':'user';if(!stream)return;await cam();
   if(pc)for(const x of pc.getSenders()){const t=(outS||stream).getTracks().find(t=>x.track&&t.kind===x.track.kind);if(t)await x.replaceTrack(t)}};
-$('mute').onclick=()=>{muted=!muted;applyGain();$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro'};
-$('torch').onclick=async()=>{const t=stream.getVideoTracks()[0],on=!$('torch').classList.contains('on');await t.applyConstraints({advanced:[{torch:on},...EXTRA]}).catch(()=>{});$('torch').classList.toggle('on',on)};
-$('zoom').oninput=()=>stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:+$('zoom').value},...EXTRA]}).catch(()=>{});
+$('mute').onclick=()=>setMuted(!muted);
+$('torch').onclick=()=>setTorch(!$('torch').classList.contains('on'));
+$('zoom').oninput=()=>setZoom(+$('zoom').value);
+
+/* ===== Réglages modifiables depuis le PC (et ici) : un seul chemin pour les deux, donc toujours d'accord =====
+   Le téléphone reste maître : il applique, enregistre, puis rapporte ses réglages réels au PC (au démarrage, à chaque changement, toutes les 3 s). */
+function setMuted(v){muted=!!v;applyGain();$('mute').classList.toggle('on',muted);$('mt').textContent=muted?'Muet':'Micro';reportSetSoon()}
+async function setTorch(on){
+  const t=stream&&stream.getVideoTracks()[0];if(!t||!capsCur.torch){reportSetSoon();return}
+  await t.applyConstraints({advanced:[{torch:!!on},...EXTRA]}).then(()=>$('torch').classList.toggle('on',!!on)).catch(()=>{});reportSetSoon()}
+function setZoom(v){
+  const t=stream&&stream.getVideoTracks()[0],z=capsCur.zoom;if(!t||!z||!isFinite(v))return;
+  v=Math.min(z.max,Math.max(z.min,v));$('zoom').value=v;
+  t.applyConstraints({advanced:[{zoom:v},...EXTRA]}).catch(()=>{});reportSetSoon()}
+async function applyPrio(){
+  const sharp=$('prio').value==='sharp',vt=stream&&stream.getVideoTracks()[0];
+  try{if(vt)vt.contentHint=sharp?'detail':'motion'}catch{}
+  const sd=pc&&pc.getSenders().find(x=>x.track&&x.track.kind==='video');
+  if(sd){const p=sd.getParameters();if(p.encodings&&p.encodings.length){p.degradationPreference=sharp?'maintain-resolution':'maintain-framerate';await sd.setParameters(p).catch(()=>{})}}
+  if(sharp&&lvl>0)await setLevel(0)   /* mode netteté : on rend tout de suite la définition et le débit */
+}
+/* Rouvre la caméra (nouvelle définition) en gardant flash et zoom ; avec reneg, renégocie aussi la liaison (nouveau débit maximal / codec). */
+async function restartCam(reneg){
+  for(let i=0;i<50&&recBusy;i++)await new Promise(r=>setTimeout(r,200));
+  if(!running||recBusy)return;recBusy=true;
+  const tOn=$('torch').classList.contains('on'),z=+$('zoom').value;
+  try{
+    await cam();
+    const vt=stream.getVideoTracks()[0],adv=[];
+    if(tOn&&capsCur.torch){adv.push({torch:true});$('torch').classList.add('on')}
+    if(capsCur.zoom&&z>capsCur.zoom.min&&z<=capsCur.zoom.max){adv.push({zoom:z});$('zoom').value=z}
+    if(adv.length)await vt.applyConstraints({advanced:[...adv,...EXTRA]}).catch(()=>{});
+    if(reneg){peakH=0;if(pc)await offer()}
+    else if(pc)for(const sd of pc.getSenders()){const k=sd.track&&sd.track.kind,t=k==='video'?stream.getVideoTracks()[0]:k==='audio'?(outS||stream).getAudioTracks()[0]:null;if(t)await sd.replaceTrack(t)}
+  }catch{scheduleRecover(3000)}
+  finally{recBusy=false}
+}
+/* Les changements sont traités l'un après l'autre (jamais deux redémarrages de caméra en même temps). */
+let applyQ=Promise.resolve();
+const applyChanges=keys=>applyQ=applyQ.then(()=>applyChangesNow(keys)).catch(()=>{});
+async function applyChangesNow(keys){
+  if(!running||!stream){reportSet();return}
+  let camR=false,reneg=false;
+  for(const k of keys){
+    if(k==='q'){camR=true;reneg=true}
+    else if(k==='codec')reneg=true;
+    else if(k==='fluid'){if($('fluid').value==='off')camR=true;else{const vt=stream.getVideoTracks()[0];if(vt)await lowLight(vt,capsCur)}}
+    else if(k==='prio')await applyPrio();
+  }
+  if(camR)await restartCam(reneg);else if(reneg&&pc)await offer();
+  reportSet();
+}
+/* Ordre venant du PC : on revérifie chaque valeur (rien n'est cru sur parole), on enregistre comme si on l'avait réglé ici, puis on applique. */
+async function applySet(s){
+  if(!s||typeof s!=='object')return;
+  const ch=[],pick=(k,ok)=>{if(ok.includes(s[k])&&String(s[k])!==$(k).value){$(k).value=String(s[k]);localStorage[k]=$(k).value;ch.push(k)}};
+  pick('q',[480,720,1080]);pick('codec',['auto','h264','vp8']);pick('prio',['sharp','fluid']);pick('fluid',['off','on','max']);
+  if(Number.isInteger(s.mvol)&&s.mvol>=0&&s.mvol<=100){$('mvol').value=s.mvol;localStorage.mvol=$('mvol').value;$('mvo').textContent=$('mvol').value;applyGain()}
+  if(typeof s.muted==='boolean'&&s.muted!==muted)setMuted(s.muted);
+  if(typeof s.torch==='boolean')await setTorch(s.torch);
+  if(typeof s.zoom==='number')setZoom(s.zoom);
+  await applyChanges(ch);reportSet();
+}
+/* Rapport au PC : valeurs réellement en vigueur + ce que la caméra sait faire (flash, zoom). Un ancien APK n'envoie rien : le PC le sait. */
+function reportSet(){
+  const z=capsCur&&capsCur.zoom;
+  sj({type:'settings',q:+$('q').value,codec:$('codec').value,prio:$('prio').value,fluid:$('fluid').value,mvol:Math.round(+$('mvol').value),muted,
+    torch:$('torch').classList.contains('on'),zoom:z?+$('zoom').value:undefined,ctorch:!!(capsCur&&capsCur.torch),
+    zmin:z?z.min:undefined,zmax:z?z.max:undefined,zstep:z?(z.step||.1):undefined})
+}
+let rsT=0;const reportSetSoon=()=>{clearTimeout(rsT);rsT=setTimeout(reportSet,250)};
+setInterval(()=>{if(running)reportSet()},3000);
 let scanning=false,fails=0,busy=0,peakH=0;
 function discover(){
   if(scanning)return;

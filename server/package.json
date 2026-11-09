@@ -4,7 +4,7 @@
  "main": "server.js",
  "scripts": {
   "start": "node server.js",
-  "test": "node test/pairing.js && node test/security.js && node test/phone.js && node test/desktop.js && node test/e2e.js && node test/camera.js",
+  "test": "node test/pairing.js && node test/security.js && node test/phone.js && node test/remote.js && node test/control.js && node test/desktop.js && node test/e2e.js && node test/camera.js",
   "soak": "node --expose-gc test/soak.js"
  },
  "dependencies": {

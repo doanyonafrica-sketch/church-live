@@ -139,6 +139,25 @@ h2{font-size:22px;margin-bottom:6px}
 details,dialog{border-radius:16px}
 dialog{border-color:rgba(232,196,122,.28);background:linear-gradient(#0c333a,#072227)}
 .empty{border-color:rgba(232,196,122,.35);border-radius:14px}
+
+/* ===== Vue simple des caméras + réglages des téléphones ===== */
+.sechead{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}.sechead h2{margin:0;flex:1}
+.verd{display:flex;gap:14px;align-items:center;margin:2px 0 16px}
+.verd i{width:16px;height:16px;border-radius:50%;flex:none;background:var(--mute)}
+.verd.ok i{background:var(--ok);box-shadow:0 0 0 6px rgba(111,220,154,.18)}
+.verd.warn i{background:var(--warn);box-shadow:0 0 0 6px rgba(242,194,96,.2)}
+.verd.bad i{background:var(--live);box-shadow:0 0 0 6px rgba(255,90,78,.22)}
+.verd b{font:600 20px var(--serif)}.verd small{display:block;color:var(--mute);font-size:14px;margin-top:2px;max-width:70ch}
+.verd.warn small,.verd.bad small{color:var(--text)}
+.tech{display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}body.det .tech{display:block}
+.tech .dg{margin-top:0}
+.rs{margin-top:14px;background:var(--surf2)}
+.rsg{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 20px;padding:2px 0 8px}
+.rsg .f{display:flex;flex-direction:column;gap:6px;min-width:0}.rsg .f>span{font-size:13px;color:var(--mute)}
+select{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 12px;min-width:0;width:100%}
+select:focus-visible,input[type=range]:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+.rsg input[type=range]{width:100%;accent-color:var(--gold)}
+.rsnote,.rsmsg{margin:6px 0;color:var(--mute);font-size:14px}.rsmsg{min-height:20px;color:var(--gold)}
 </style>
 <header><img src="/logo.png" alt="Logo de l'église"><div><h1>TPR Live</h1><p>Tabernacle La Parole Révélée. Gardez cette fenêtre ouverte pendant le direct.</p></div></header>
 
@@ -146,7 +165,7 @@ dialog{border-color:rgba(232,196,122,.28);background:linear-gradient(#0c333a,#07
 <div id="live">
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
-<div class="sec" id="camsec" hidden><h2>État des caméras</h2><div id="cams"></div></div>
+<div class="sec" id="camsec" hidden><div class="sechead"><h2>État des caméras</h2><button class="btn sec2" id="det" aria-pressed="false">Détails techniques</button></div><div id="cams"></div></div>
 
 <div class="sec"><h2>Adresse à saisir sur le téléphone</h2><p>Dans Réglages de l'application, champ « Adresse du PC ».</p><div id="ips"></div><div id="pinbox" hidden><p style="margin-top:14px">Code d'appairage, à saisir une fois dans les Réglages du téléphone (champ « Code »). Il empêche un autre appareil du Wi-Fi de prendre la place d'une caméra.</p><div class="addr"><span class="nm">Code</span><code id="pin"></code><button data-c="pin">Copier</button></div></div></div>
 <div class="sec"><h2>Adresses des Sources Navigateur dans OBS</h2><p>Une source par téléphone. Largeur 1920, hauteur 1080, et cochez « Contrôler l'audio via OBS ». Le numéro de caméra se règle dans l'application du téléphone.</p><div id="obsl"></div></div>
@@ -211,26 +230,114 @@ const kv=(l,v,c)=>'<div><span>'+l+'</span><b'+(c?' class="'+c+'"':'')+'>'+esc(v)
 const sig=r=>r==null?'—':(r>=-60?'Excellent':r>=-70?'Bon':r>=-80?'Faible':'Très faible')+' ('+r+' dBm)';
 const hms=s=>[Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(n=>String(n).padStart(2,'0')).join(':');
 const LIM={cpu:'Processeur du téléphone',bandwidth:'Réseau',none:'Aucune'};
+/* Vue simple par défaut ; « Détails techniques » affiche en plus les mesures complètes (réglage mémorisé sur ce PC). */
+let DET=false;try{DET=localStorage.det==='1'}catch{}
+const applyDet=()=>{document.body.classList.toggle('det',DET);$('det').setAttribute('aria-pressed',DET);$('det').textContent=DET?'Masquer les détails techniques':'Détails techniques'};
+$('det').onclick=()=>{DET=!DET;try{localStorage.det=DET?'1':'0'}catch{}applyDet()};applyDet();
+const CARDS=new Map(),LAST={},PEND={},RMSG={},FORCE={};   /* FORCE : réglages à réafficher tels que le téléphone les a, même si la liste a le focus */
+const hq=r=>{const h=+((/[×x](\d+)/.exec(r||''))||[])[1]||0;return h>=1000?'Full HD 1080p':h>=700?'HD 720p':h?h+'p':'—'};
+/* Qualité de la connexion en un mot : on prend le pire de ce que mesurent le Wi-Fi, les pertes et la latence */
+function conn(st){
+  let n=0;const up=v=>{n=Math.max(n,v)};
+  if(st.rssi!=null)up(st.rssi<-80?3:st.rssi<-70?2:st.rssi<-60?1:0);
+  up(st.loss>3||st.rtt>150?3:st.loss>1||st.rtt>60?2:0);
+  return[['Excellente',''],['Bonne',''],['Moyenne','warn2'],['Mauvaise','bad2']][n]}
+/* Un seul état, une phrase : ce que n'importe quel bénévole doit savoir */
+function verdict(x,st,vs){
+  const tail=x.viewer?'':' OBS n\'est pas connecté à cette caméra.';
+  if(!st)return x.viewer?{lv:'',t:'Connexion de l\'image…',d:'L\'image va apparaître dans quelques secondes.'}:{lv:'',t:'En attente d\'OBS',d:'Le téléphone est prêt. Ajoutez la source de cette caméra dans OBS (adresses plus bas).'};
+  if(st.level==='bad')return{lv:'bad',t:'Problème',d:(st.diag||'Cette caméra a un problème.')+tail};
+  if(st.level==='warn')return{lv:'warn',t:'À surveiller',d:(st.diag||'Surveillez cette caméra.')+tail};
+  if(vs&&(vs.dropped>0||vs.lost>0))return{lv:'warn',t:'À surveiller',d:'OBS perd quelques images. Si l\'image saccade, rapprochez le téléphone du routeur ou utilisez le câble USB.'+tail};
+  return{lv:'ok',t:'Tout va bien',d:(x.viewer?'L\'image arrive correctement dans OBS.':'Le téléphone est prêt.')+tail}}
+function statHtml(x,st,vs){
+  const n=x.room==='main'?1:String(x.room).replace('cam',''),v=verdict(x,st,vs);
+  let h='<h3>Caméra '+esc(n)+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+'</h3>'
+    +'<div class="verd '+v.lv+'"><i></i><div><b>'+esc(v.t)+'</b><small>'+esc(v.d)+'</small></div></div>';
+  if(st){const c=conn(st),low=st.battery!=null&&st.battery<20&&!st.charging;
+    h+='<div class="kv">'+kv('Connexion',c[0],c[1])+kv('Batterie',st.battery!=null?st.battery+' %'+(st.charging?' (en charge)':''):'—',low?'bad2':'')
+      +kv('Image',hq(st.res)+' · '+st.fps+' images/s')+kv('Durée du direct',hms(st.sec||0))+'</div>'}
+  /* Détails techniques (masqués par défaut) */
+  let t='';
+  if(st){
+    t+='<div class="kv">'+kv('Image envoyée',st.res+' à '+st.fps+' i/s')+kv('Débit',st.mbps+' Mb/s')+kv('Compression',st.codec||'—')
+      +kv('Latence réseau',st.rtt!=null?st.rtt+' ms':'—',st.rtt>150?'bad2':st.rtt>60?'warn2':'')+kv('Paquets perdus',st.loss+' %',st.loss>3?'bad2':st.loss>1?'warn2':'')
+      +kv('Signal Wi-Fi',sig(st.rssi),st.rssi!=null&&st.rssi<-75?'warn2':'')+kv('Vitesse de liaison',st.link?st.link+' Mb/s':'—')
+      +kv('Micro',st.muted?'Coupé':'Actif',st.muted?'warn2':'')+kv('Limité par',LIM[st.limit]||st.limit,st.limit&&st.limit!=='none'?'warn2':'')+'</div>';
+    if(st.diag)t+='<p class="dg">'+esc(st.diag)+'</p>'}
+  if(vs)t+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('Image reçue',vs.res+' à '+vs.fps+' i/s')+kv('Paquets perdus',vs.lost+' /s',vs.lost>0?'warn2':'')
+    +kv('Images perdues',vs.dropped+' /s',vs.dropped>0?'warn2':'')+kv('Gigue',vs.jitter+' ms',vs.jitter>30?'warn2':'')+kv('Tampon',vs.buf+' ms')+'</div></div>';
+  else if(x.publisher)t+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('OBS','Pas de réception')+'</div></div>';
+  return h+(t?'<div class="tech">'+t+'</div>':'')}
+/* Réglages du téléphone : construits UNE fois par caméra (sinon les listes se refermeraient à chaque rafraîchissement) */
+const RS_HTML='<details class="rs"><summary>Régler ce téléphone depuis le PC</summary>'
+  +'<p class="rsnote"></p><div class="rsg" hidden>'
+  +'<label class="f"><span>Qualité de l\'image</span><select data-k="q"><option value="480">Économique (480p)</option><option value="720">HD (720p)</option><option value="1080">Full HD (1080p)</option></select></label>'
+  +'<label class="f"><span>Priorité</span><select data-k="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select></label>'
+  +'<label class="f"><span>Image fluide de nuit</span><select data-k="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité</option><option value="max">Fluidité maximale (image plus sombre)</option></select></label>'
+  +'<label class="f"><span>Compression vidéo</span><select data-k="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le téléphone)</option><option value="vp8">VP8</option></select></label>'
+  +'<label class="f"><span>Volume du micro : <output data-o="mvol"></output> %</span><input type="range" min="0" max="100" step="5" data-k="mvol"></label>'
+  +'<div class="f"><span>Micro</span><button class="btn sec2" data-a="muted">Couper le micro</button></div>'
+  +'<div class="f" data-cap="torch" hidden><span>Flash</span><button class="btn sec2" data-a="torch">Allumer</button></div>'
+  +'<label class="f" data-cap="zoom" hidden><span>Zoom : <output data-o="zoom"></output></span><input type="range" min="1" max="1" step=".1" data-k="zoom"></label>'
+  +'</div><p class="rsmsg" role="status" aria-live="polite"></p>'
+  +'<p class="hint">Qualité et compression coupent l\'image une ou deux secondes ; le reste est immédiat. Les mêmes réglages restent disponibles sur le téléphone : le dernier changement fait foi.</p></details>';
+const KEYS=['q','prio','fluid','codec','mvol','muted','torch','zoom'];
+function updSettings(room,el,x){
+  const F=FORCE[room]||new Set(),S=x.settings&&x.settings.age<10000?x.settings:null,d=el.querySelector('.rs');d.hidden=!x.publisher;
+  const g=d.querySelector('.rsg'),note=d.querySelector('.rsnote'),m=d.querySelector('.rsmsg'),now=Date.now();
+  if(!S){g.hidden=true;m.textContent='';note.textContent=x.settings?'Liaison avec le téléphone interrompue…':'En attente des réglages du téléphone… S\'ils n\'apparaissent pas, l\'application du téléphone doit être mise à jour (même version que le PC).';return}
+  note.textContent='';g.hidden=false;
+  for(const k of KEYS){const pk=room+'|'+k,p=PEND[pk];if(!p)continue;
+    if(k==='zoom'?Math.abs(S.zoom-p.v)<.15:S[k]===p.v){delete PEND[pk];RMSG[room]={t:now,x:'Appliqué ✓'}}
+    else if(now-p.t>8000){delete PEND[pk];F.add(k);RMSG[room]={t:now,x:'Le téléphone n\'a pas appliqué ce réglage.'}}}
+  g.querySelectorAll('[data-k]').forEach(c=>{const k=c.dataset.k;if(S[k]===undefined)return;
+    if(k==='zoom'&&S.zmin!=null){c.min=S.zmin;c.max=S.zmax;c.step=S.zstep||.1}
+    if(PEND[room+'|'+k]||(document.activeElement===c&&!F.has(k)))return;
+    c.value=S[k];const o=g.querySelector('[data-o="'+k+'"]');if(o)o.textContent=k==='zoom'?(+S[k]).toFixed(1)+'×':S[k]});
+  delete FORCE[room];
+  const pv=(k,v)=>PEND[room+'|'+k]?PEND[room+'|'+k].v:v;
+  g.querySelector('[data-a="muted"]').textContent=pv('muted',S.muted)?'Réactiver le micro':'Couper le micro';
+  g.querySelector('[data-a="torch"]').textContent=pv('torch',S.torch)?'Éteindre':'Allumer';
+  g.querySelector('[data-cap="torch"]').hidden=!S.ctorch;
+  g.querySelector('[data-cap="zoom"]').hidden=!(S.zmax>S.zmin);
+  const r=RMSG[room];m.textContent=r&&now-r.t<10000?r.x:''}
+async function push(room,set){
+  const x=LAST[room]||{},S=x.settings||{};
+  /* ces changements coupent l'image un instant : on demande confirmation si la caméra est à l'antenne */
+  const risky=('q' in set&&set.q!==S.q)||('codec' in set&&set.codec!==S.codec)||('fluid' in set&&set.fluid==='off'&&S.fluid!=='off');
+  if(risky&&x.onair&&!confirm('Cette caméra est À L\'ANTENNE.\n\nCe changement coupe l\'image une ou deux secondes dans le direct. Continuer ?')){RMSG[room]={t:Date.now(),x:'Changement annulé.'};FORCE[room]=new Set(Object.keys(set));refresh(room);return}
+  const t=Date.now();for(const k in set)PEND[room+'|'+k]={v:set[k],t};
+  RMSG[room]={t,x:'Envoi au téléphone…'};refresh(room);
+  try{const j=await (await fetch('/api/phone/'+encodeURIComponent(room)+'/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({set})})).json();
+    if(j.ok)RMSG[room]={t:Date.now(),x:'Envoyé. En attente de la confirmation du téléphone…'};
+    else{for(const k in set)delete PEND[room+'|'+k];FORCE[room]=new Set(Object.keys(set));RMSG[room]={t:Date.now(),x:j.error||'Échec de l\'envoi.'}}}
+  catch{for(const k in set)delete PEND[room+'|'+k];FORCE[room]=new Set(Object.keys(set));RMSG[room]={t:Date.now(),x:'Échec de l\'envoi : le PC ne répond pas.'}}
+  refresh(room)}
+const refresh=room=>{const el=CARDS.get(room);if(el&&LAST[room])updSettings(room,el,LAST[room])};
+const roomOf=t=>{const c=t.closest('.cam');return c?c.dataset.room:null};
+let zT=0;
+$('cams').addEventListener('input',e=>{const c=e.target.closest('[data-k]');if(!c||c.type!=='range')return;const o=c.closest('.f').querySelector('[data-o]');
+  if(o)o.textContent=c.dataset.k==='zoom'?(+c.value).toFixed(1)+'×':c.value;
+  if(c.dataset.k==='zoom'){const room=roomOf(c),v=+c.value;clearTimeout(zT);zT=setTimeout(()=>push(room,{zoom:v}),120)}});
+$('cams').addEventListener('change',e=>{const c=e.target.closest('[data-k]');if(!c||c.dataset.k==='zoom')return;const room=roomOf(c),k=c.dataset.k;
+  push(room,{[k]:k==='q'||k==='mvol'?+c.value:c.value})});
+$('cams').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const room=roomOf(b),k=b.dataset.a,S=(LAST[room]||{}).settings||{},p=PEND[room+'|'+k];
+  push(room,{[k]:!(p?p.v:S[k])})});
 function cams(list){
-  const rs=(list||[]).filter(x=>x.publisher||(x.stats&&x.stats.age<5000));
+  const rs=(list||[]).filter(x=>x.publisher||(x.stats&&x.stats.age<5000)).sort((a,b)=>a.room<b.room?-1:1);
   $('camsec').hidden=!rs.length;
-  $('cams').innerHTML=rs.sort((a,b)=>a.room<b.room?-1:1).map(x=>{
-    const n=x.room==='main'?1:String(x.room).replace('cam',''),st=x.stats&&x.stats.age<5000?x.stats:null,vs=x.vstats&&x.vstats.age<5000?x.vstats:null;
-    const lv=st?st.level:'',bt=!st?'En attente des mesures':lv==='ok'?'Tout va bien':lv==='warn'?'À surveiller':'Problème';
-    let h='<div class="cam"><h3>Caméra '+esc(n)+' <span class="badge '+esc(lv)+'">'+bt+'</span>'+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+'</h3>';
-    if(st){
-      h+='<div class="kv">'+kv('Image envoyée',st.res+' à '+st.fps+' i/s')+kv('Débit',st.mbps+' Mb/s')+kv('Compression',st.codec||'—')
-        +kv('Latence réseau',st.rtt!=null?st.rtt+' ms':'—',st.rtt>150?'bad2':st.rtt>60?'warn2':'')+kv('Paquets perdus',st.loss+' %',st.loss>3?'bad2':st.loss>1?'warn2':'')
-        +kv('Signal Wi-Fi',sig(st.rssi),st.rssi!=null&&st.rssi<-75?'warn2':'')+kv('Vitesse de liaison',st.link?st.link+' Mb/s':'—')
-        +kv('Batterie',st.battery!=null?st.battery+' %'+(st.charging?' (en charge)':''):'—',st.battery!=null&&st.battery<20&&!st.charging?'bad2':'')
-        +kv('Durée du direct',hms(st.sec||0))+kv('Micro',st.muted?'Coupé':'Actif',st.muted?'warn2':'')+kv('Limité par',LIM[st.limit]||st.limit,st.limit&&st.limit!=='none'?'warn2':'')+'</div>';
-      if(st.diag)h+='<p class="dg">'+esc(st.diag)+'</p>';
-    }
-    if(vs)h+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('Image reçue',vs.res+' à '+vs.fps+' i/s')+kv('Paquets perdus',vs.lost+' /s',vs.lost>0?'warn2':'')
-      +kv('Images perdues',vs.dropped+' /s',vs.dropped>0?'warn2':'')+kv('Gigue',vs.jitter+' ms',vs.jitter>30?'warn2':'')+kv('Tampon',vs.buf+' ms')+'</div></div>';
-    else if(x.publisher)h+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('OBS','Pas de réception')+'</div></div>';
-    return h+'</div>'}).join('');
-}
+  const keep=new Set(rs.map(x=>x.room));
+  for(const[room,el]of CARDS)if(!keep.has(room)){el.remove();CARDS.delete(room);delete LAST[room]}
+  const box=$('cams');
+  rs.forEach((x,i)=>{
+    let el=CARDS.get(x.room);
+    if(!el){el=document.createElement('div');el.className='cam';el.dataset.room=x.room;el.innerHTML='<div class="stat"></div>'+RS_HTML;CARDS.set(x.room,el)}
+    if(box.children[i]!==el)box.insertBefore(el,box.children[i]||null);
+    LAST[x.room]=x;
+    const st=x.stats&&x.stats.age<5000?x.stats:null,vs=x.vstats&&x.vstats.age<5000?x.vstats:null;
+    el.querySelector('.stat').innerHTML=statHtml(x,st,vs);
+    updSettings(x.room,el,x)})}
 async function r(){let i;try{i=await (await fetch('/info')).json()}catch{return}
 cams(i.rooms);$('ct').textContent=(i.cpu!=null?i.cpu+' %':'—');$('ct').className=i.cpu>85?'bad2':i.cpu>65?'warn2':'';
 const rm={};(i.rooms||[]).forEach(x=>rm[x.room]=x);
