@@ -1,1 +1,18 @@
-{"name":"church-live-server","version":"1.0.0","main":"server.js","scripts":{"start":"node server.js","test":"node test/pairing.js && node test/e2e.js && node test/camera.js"},"dependencies":{"express":"^4.19.2","ws":"^8.18.0","ffmpeg-static":"^5.2.0"},"devDependencies":{"@roamhq/wrtc":"^0.8.0"}}
+{
+ "name": "church-live-server",
+ "version": "1.0.0",
+ "main": "server.js",
+ "scripts": {
+  "start": "node server.js",
+  "test": "node test/pairing.js && node test/security.js && node test/phone.js && node test/desktop.js && node test/e2e.js && node test/camera.js",
+  "soak": "node --expose-gc test/soak.js"
+ },
+ "dependencies": {
+  "express": "^4.19.2",
+  "ws": "^8.18.0",
+  "ffmpeg-static": "^5.2.0"
+ },
+ "devDependencies": {
+  "@roamhq/wrtc": "^0.8.0"
+ }
+}

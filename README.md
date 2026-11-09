@@ -2,12 +2,11 @@
 - `server/` : serveur Node + pages web (`phone.html`, `obs.html`, `control.html`)
 - `mobile/` : enveloppe Capacitor → APK (compilé par GitHub Actions)
 - `desktop/` : enveloppe Electron → installeur Windows (compilé par GitHub Actions)
-- `android-native/` : version Android native (secours, optionnelle)
 - `mobile/signing/` : clé de signature fixe de l'APK (nécessaire pour que les mises à jour s'installent par-dessus)
 - `mobile/patch/` : `MainActivity` qui garde le Wi-Fi en haute performance pendant le direct
 
 ## Obtenir les applications
-Onglet **Actions** du dépôt → dernier « Build APK » / « Build Windows » → télécharger l'artefact (`church-live-apk`, `church-live-windows`).
+Onglet **Actions** du dépôt → dernier « Release » (APK et PC compilés ensemble). « Build Windows » ne se lance plus qu'à la main.
 
 ## Utilisation
 1. PC : installer et lancer **TPR Live** ; la fenêtre affiche l'adresse OBS et l'adresse à saisir sur le téléphone.
@@ -51,18 +50,35 @@ Onglet **Caméras PTZ** dans la fenêtre du PC : image en direct, rotation (haut
 - Le dépôt GitHub doit être **public** (sinon le PC ne peut pas vérifier les mises à jour).
 
 ## Clé de signature privée (recommandé)
-La clé du dossier `mobile/signing/` est publique (le dépôt l'est) : n'importe qui pourrait signer un faux APK qui s'installerait par-dessus. Pour y remédier une fois :
-1. `keytool -genkeypair -keystore tpr.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=TPR Live"`
+## Sécurité de la signature (obligatoire)
+La clé du dossier `mobile/signing/` est publique (le dépôt l'est) : n'importe qui pourrait signer un faux APK qui s'installerait par-dessus. **La compilation est donc refusée tant que le secret n'existe pas.** À faire une fois :
+1. Créer une clé privée : `keytool -genkey -v -keystore tpr.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=TPR Live"`
 2. `base64 -w0 tpr.keystore` (sur Windows : `certutil -encode`), puis copier le résultat dans un **secret GitHub** nommé `ANDROID_KEYSTORE_B64` (Settings → Secrets and variables → Actions).
-3. Garder `tpr.keystore` en lieu sûr, **jamais dans le dépôt**. Publier une nouvelle version (tag). Désinstaller l'ancien APK **une seule fois** (la signature change), puis installer le nouveau.
-Tant que le secret n'existe pas, la compilation utilise l'ancienne clé comme avant.
+3. Supprimer ensuite `mobile/signing/debug.keystore` du dépôt.
+
+**Dépannage / transition** : pour compiler quand même avec l'ancienne clé publique (déconseillé), créer la *variable* GitHub (Settings → Secrets and variables → Actions → Variables) `ALLOW_PUBLIC_KEY` = `true`. Un avertissement apparaît à chaque compilation. Changer de clé oblige à désinstaller l'ancien APK une seule fois.
+
+## Protections intégrées
+- **Tests avant chaque publication** : `release.yml` lance `npm test` (appairage, sécurité, WebRTC, caméras). Un test rouge empêche la publication.
+- **Pages malveillantes** : le WebSocket et l'API caméras refusent les requêtes venant d'un autre site, d'un nom de domaine (DNS rebinding) ou marquées « inter-sites » par le navigateur.
+- **Mise à jour de l'APK vérifiée** : le téléphone compare l'empreinte SHA-256 du fichier téléchargé à celle publiée avec la version (`apk-version.json` sur le PC, et sur GitHub quand le téléphone a Internet : si les deux diffèrent, la mise à jour est refusée). Sans empreinte valide, rien ne s'installe.
+- **Reprise automatique de la caméra** : si un appel téléphonique, une autre application ou une panne coupe la caméra ou le micro (ou si l'image se fige 8 secondes), le téléphone la rouvre tout seul et reprend le direct, sans toucher l'écran.
+- **Alertes sur le téléphone** : « le téléphone chauffe » (Android 10+) et « batterie faible, branchez-le » apparaissent sur le téléphone et sur le PC avant que l'image ne se dégrade.
+- **Fermeture protégée (PC)** : fermer TPR Live pendant qu'un téléphone est en direct demande confirmation. Une seule copie du programme à la fois, et Windows ne se met plus en veille pendant que TPR Live tourne.
+- **Mises à jour hors direct (PC)** : la mise à jour ne se télécharge ni ne s'annonce tant qu'un téléphone est en direct.
+- **Journal d'erreurs (PC)** : `tpr-live.log` dans le dossier de données (`%APPDATA%\TPR Live`). Une erreur inattendue y est notée au lieu d'interrompre le programme.
+- **Pare-feu (PC)** : au premier lancement, TPR Live propose d'autoriser les téléphones (Windows demande l'accord de l'administrateur une seule fois). À la main : `netsh advfirewall firewall add rule name=TPRLive dir=in action=allow protocol=TCP localport=3000 profile=any` dans une invite de commandes administrateur.
+- **Mots de passe des caméras IP chiffrés** sur le PC (liés à la session Windows).
+- **Serveur durci** : au plus 16 caméras simultanées, et un appareil qui inonde le serveur de messages est déconnecté.
+- **Tests** : `npm test` (appairage, sécurité, page téléphone, programme Windows, WebRTC, caméras). `npm run soak` simule une liaison vidéo avec coupures Wi-Fi ; pour un vrai culte : `SOAK_SECONDS=10800 npm run soak` (3 heures).
+- Limite connue : le code d'appairage et la vidéo circulent en clair sur le réseau local (pas de HTTPS). À utiliser sur un Wi-Fi de confiance.
 
 ## Important : première installation après cette correction
 L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.
 
 ## Dernières améliorations (fluidité, son, interface)
 
-- **Image plus fluide** : le débit maximal est un peu plus bas (720p = 2,5 Mb/s) et la qualité s'adapte seule. Si le réseau ou le processeur du téléphone n'arrive pas à suivre, la résolution et le débit baissent avant que l'image ne rame, puis remontent quand ça va mieux. Le tampon anti-saccades d'OBS passe à 250 ms (`obs.html?delay=150` plus réactif, `?delay=400` plus fluide).
+- **Image fluide et nette** : débits relevés (480p = 2 Mb/s, 720p = 5 Mb/s, 1080p = 8 Mb/s) avec un débit de départ élevé et un plancher, pour que l'image ne s'étrangle pas dès qu'on bouge la caméra. La baisse automatique de qualité ne se déclenche plus qu'après 5 secondes de vrai problème (processeur surchargé, pertes ou retard réseau), ne descend jamais sous ~480p, et la qualité remonte seule après un calme prolongé (sans yo-yo, même si la lumière est faible). Réglage **Priorité** : « Netteté » (par défaut) garde la définition et le débit en toutes circonstances, quitte à laisser sauter des images si le téléphone ou le réseau peine ; « Fluidité » garde 30 images/s et accepte de baisser la définition. Le tampon anti-saccades d'OBS reste à 250 ms (`obs.html?delay=150` plus réactif, `?delay=400` plus fluide).
 - **Son** : le micro est filtré (basses parasites), baissé par défaut (réglage « Volume du micro », 50 %) et limité (plus de pics trop forts). Si ça « siffle » encore : dans OBS, mettre l'écoute audio de la source sur « Écoute coupée » (clic droit sur la source dans le mélangeur audio), ou ajouter `?vol=0.6` à l'adresse de la source.
 - **Interface téléphone** : l'image de la caméra occupe tout l'écran. Les commandes flottent sur le côté, se cachent seules pendant le direct (toucher l'écran pour les faire revenir), et la barre « à l'antenne » est devenue une petite pastille.
 - **Écran d'attente** (`attente.mp4` / `attente.webm` dans `server/public`) : la vidéo de l'aigle tourne en fond, avec la date, un texte d'état et une barre de chargement, sur le téléphone tant que la caméra n'est pas lancée ou ne fournit plus d'image, et dans OBS tant qu'aucune image n'arrive (caméra absente, connexion en cours, image figée). Pour la changer, remplacer ces deux fichiers (idéalement en 16:9, 1920×1080).

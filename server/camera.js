@@ -2,6 +2,7 @@
    - ONVIF : protocole standard compris par la grande majorité des caméras IP (Hikvision, Dahua, TP-Link Tapo, Reolink, Axis, V380 Pro, etc.).
    - Image : le flux RTSP de la caméra est converti en MJPEG par ffmpeg (navigateurs et Electron ne lisent pas le RTSP).
    Tout est réservé au PC lui-même (127.0.0.1) : un téléphone du réseau ne peut ni lire ni modifier les caméras. */
+const {localRequestOk}=require('./security');
 const http=require('http'),net=require('net'),crypto=require('crypto'),fs=require('fs'),os=require('os'),path=require('path'),{spawn}=require('child_process');
 
 /* ───────────── Sécurité ───────────── */
@@ -126,11 +127,18 @@ class Streams{
 }
 
 /* ───────────── Stockage ───────────── */
-function store(dir){
+/* cipher (facultatif) : {enc(texte)→base64, dec(base64)→texte}. Fourni par l'application Windows (chiffrement lié à la session de l'utilisateur) :
+   les mots de passe des caméras ne sont plus écrits en clair dans cameras.json. Un ancien fichier en clair est converti au premier enregistrement. */
+function store(dir,cipher){
   const f=path.join(dir,'cameras.json');let list=[];
   try{list=JSON.parse(fs.readFileSync(f,'utf8'))}catch{}
   if(!Array.isArray(list))list=[];
-  const save=()=>{try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(f+'.tmp',JSON.stringify(list,null,1));fs.renameSync(f+'.tmp',f)}catch(e){console.error('cameras.json :',e.message)}};
+  const isEnc=p=>typeof p==='string'&&p.startsWith('enc:');
+  for(const c of list)if(isEnc(c.pass)){try{c.pass=cipher?cipher.dec(c.pass.slice(4)):''}catch{c.pass=''}}   /* illisible (autre session) : on redemandera le mot de passe */
+  const save=()=>{try{fs.mkdirSync(dir,{recursive:true});
+    const out=list.map(c=>({...c,pass:c.pass&&cipher?'enc:'+cipher.enc(c.pass):c.pass}));
+    fs.writeFileSync(f+'.tmp',JSON.stringify(out,null,1),{mode:0o600});fs.renameSync(f+'.tmp',f)}catch(e){console.error('cameras.json :',e.message)}};
+  if(cipher&&list.some(c=>c.pass))save();
   return{list:()=>list,get:id=>list.find(x=>x.id===id),save,
     add(c){list.push(c);save()},del(id){list=list.filter(x=>x.id!==id);save()}};
 }
@@ -138,12 +146,12 @@ const pub=c=>({id:c.id,name:c.name,host:c.host,port:c.port,user:c.user||'',hasPa
 
 /* ───────────── Routes HTTP ───────────── */
 function mount(app,express,opts={}){
-  const db=store(opts.dataDir||process.env.TPR_DATA||path.join(os.homedir(),'.tpr-live'));
+  const db=store(opts.dataDir||process.env.TPR_DATA||path.join(os.homedir(),'.tpr-live'),opts.cipher);
   const streams=new Streams(),sessions=new Map(),stops=new Map();
   process.once('exit',()=>streams.killAll());   /* filet de sécurité : ffmpeg ne survit jamais à l'application */
   const bad=(r,code,msg)=>r.status(code).json({error:msg});
   const ok=(r,o={})=>r.json({ok:true,...o});
-  const guard=(q,r,n)=>isLocalReq(q)?n():bad(r,403,'Réservé au PC qui exécute TPR Live.');
+  const guard=(q,r,n)=>isLocalReq(q)&&localRequestOk(q)?n():bad(r,403,'Réservé au PC qui exécute TPR Live.');
   const J=express.json({limit:'20kb'});
   const A='/api/cameras';
   const sess=async c=>{let s=sessions.get(c.id);
@@ -207,4 +215,4 @@ function mount(app,express,opts={}){
     }bad(r,400,'Action inconnue.')}));
   return{close(){streams.killAll();for(const t of stops.values())clearTimeout(t)}};
 }
-module.exports={mount,open,PTZ,isLan};
+module.exports={mount,open,PTZ,isLan,store};

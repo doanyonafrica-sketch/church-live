@@ -34,8 +34,21 @@ jobs:
           fi
           echo "Version publiée : $V"
           echo "v=$V" >> "$GITHUB_OUTPUT"
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Installer les dépendances
+        run: npm ci
+        working-directory: server
+      - name: Tests (appairage, sécurité, WebRTC, caméras)
+        run: npm test
+        working-directory: server
   apk:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
@@ -50,10 +63,20 @@ jobs:
       - name: Build APK
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ALLOW_PUBLIC_KEY: ${{ vars.ALLOW_PUBLIC_KEY }}
         run: |
           mkdir -p ~/.android
-          # clé privée gardée dans les secrets GitHub (ANDROID_KEYSTORE_B64) ; à défaut, ancienne clé du dépôt
-          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ~/.android/debug.keystore; else cp mobile/signing/debug.keystore ~/.android/debug.keystore; fi
+          # La clé de signature doit rester PRIVÉE (secret GitHub ANDROID_KEYSTORE_B64) : celle du dépôt est publique,
+          # donc n'importe qui pourrait signer un faux APK qui s'installerait par-dessus.
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
+          elif [ "$ALLOW_PUBLIC_KEY" = "true" ]; then
+            echo "::warning::APK signé avec la clé PUBLIQUE du dépôt (variable ALLOW_PUBLIC_KEY=true). À remplacer par le secret ANDROID_KEYSTORE_B64."
+            cp mobile/signing/debug.keystore ~/.android/debug.keystore
+          else
+            echo "::error::Secret ANDROID_KEYSTORE_B64 absent : compilation refusée (voir README, section « Sécurité de la signature »)."
+            exit 1
+          fi
           mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html && cp server/public/attente.mp4 server/public/attente.webm mobile/www/
           sed -i "s/const VERSION='dev'/const VERSION='${{ needs.version.outputs.v }}'/" mobile/www/index.html
           cd mobile
@@ -74,7 +97,7 @@ jobs:
           name: church-live-apk-release
           path: church-live.apk
   windows:
-    needs: [version, apk]
+    needs: [version, test, apk]
     if: needs.version.outputs.skip != 'true'
     runs-on: windows-latest
     steps:
@@ -91,10 +114,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir desktop/server && cp server/server.js server/camera.js desktop/server/ && cp -r server/public desktop/server/
+          mkdir desktop/server && cp server/*.js desktop/server/ && cp -r server/public desktop/server/
           # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
           cp apk/church-live.apk desktop/server/public/church-live.apk
-          printf '{"version":"%s"}' "${{ needs.version.outputs.v }}" > desktop/server/public/apk-version.json
+          SHA=$(sha256sum apk/church-live.apk | cut -d' ' -f1)
+          printf '{"version":"%s","sha256":"%s"}' "${{ needs.version.outputs.v }}" "$SHA" > desktop/server/public/apk-version.json
           cd desktop && npm install
           npm version "${{ needs.version.outputs.v }}" --no-git-tag-version --allow-same-version
           npx electron-builder --win --publish always
@@ -107,7 +131,12 @@ jobs:
         with:
           name: church-live-apk-release
           path: apk
+      - name: Empreinte de l'APK
+        id: sha
+        run: echo "sha=$(sha256sum apk/church-live.apk | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.v }}
           files: apk/church-live.apk
+          body: |
+            sha256: ${{ steps.sha.outputs.sha }}

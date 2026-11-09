@@ -9,6 +9,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.webkit.JavascriptInterface;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.BridgeActivity;
@@ -23,6 +24,7 @@ import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.URL;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -66,6 +68,14 @@ public class MainActivity extends BridgeActivity {
                     int sc = b.getIntExtra("scale", 100);
                     if (lv >= 0 && sc > 0) o.put("battery", Math.round(100f * lv / sc));
                     o.put("charging", b.getIntExtra("plugged", 0) != 0);
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
+                /* Chaleur du téléphone (0 = normal … 3 = sévère, Android 10 et plus) : sert à prévenir avant que le téléphone ne ralentisse */
+                if (Build.VERSION.SDK_INT >= 29) {
+                    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                    if (pm != null) o.put("thermal", pm.getCurrentThermalStatus());
                 }
             } catch (Throwable ignored) {
             }
@@ -142,27 +152,59 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        @JavascriptInterface
-        public void install(final String url) {
-            if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
-            new Thread(new Runnable() {
+        /* Signale un échec de mise à jour à la page (window.onTprUpdateFailed) */
+        private void updateFailed(final String why) {
+            runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     try {
+                        getBridge().getWebView().evaluateJavascript("window.onTprUpdateFailed&&window.onTprUpdateFailed(" + JSONObject.quote(why) + ")", null);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+        }
+
+        /* Télécharge l'APK, vérifie son empreinte SHA-256, puis seulement ouvre l'installation.
+           Sans empreinte valide ou en cas de différence, rien n'est installé (et le fichier est supprimé). */
+        @JavascriptInterface
+        public void install(final String url, final String sha256) {
+            if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+            final String expected = sha256 == null ? "" : sha256.trim().toLowerCase();
+            if (!expected.matches("[0-9a-f]{64}")) {
+                updateFailed("Mise à jour refusée : empreinte de sécurité absente.");
+                return;
+            }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    File apk = null;
+                    try {
                         File dir = new File(getCacheDir(), "updates");
                         dir.mkdirs();
-                        File apk = new File(dir, "church-live.apk");
+                        apk = new File(dir, "church-live.apk");
                         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
                         c.setConnectTimeout(10000);
                         c.setReadTimeout(30000);
                         c.setInstanceFollowRedirects(true);
+                        MessageDigest md = MessageDigest.getInstance("SHA-256");
                         InputStream in = c.getInputStream();
                         FileOutputStream out = new FileOutputStream(apk);
                         byte[] buf = new byte[65536];
                         int n;
-                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        while ((n = in.read(buf)) > 0) {
+                            out.write(buf, 0, n);
+                            md.update(buf, 0, n);
+                        }
                         out.close();
                         in.close();
+                        StringBuilder hex = new StringBuilder();
+                        for (byte x : md.digest()) hex.append(String.format("%02x", x));
+                        if (!hex.toString().equals(expected)) {
+                            apk.delete();
+                            updateFailed("Mise à jour refusée : le fichier téléchargé ne correspond pas à l'empreinte attendue.");
+                            return;
+                        }
                         Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", apk);
                         Intent i = new Intent(Intent.ACTION_VIEW);
                         i.setDataAndType(uri, "application/vnd.android.package-archive");
@@ -170,11 +212,10 @@ public class MainActivity extends BridgeActivity {
                         startActivity(i);
                     } catch (Throwable t) {
                         try {
-                            Intent b = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                            b.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            startActivity(b);
+                            if (apk != null) apk.delete();
                         } catch (Throwable ignored) {
                         }
+                        updateFailed("Échec du téléchargement de la mise à jour.");
                     }
                 }
             }).start();

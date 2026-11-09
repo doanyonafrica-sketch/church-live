@@ -1,7 +1,8 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {WebSocketServer}=require('ws');
+const {isLocalAddr,hostOk,originOk}=require('./security');
 const RELAY=new Set(['offer','answer','candidate']);
-const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','jitter','buf','dropped','lost'],
+const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','thermal','jitter','buf','dropped','lost'],
   STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
 /* Ne garde que les champs connus, avec des types simples (les statistiques viennent du réseau) */
 const clean=m=>{const o={};
@@ -20,7 +21,6 @@ function loadPin(dir){
   try{fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f,p)}catch{}
   return p;
 }
-const isLocalAddr=a=>a==='127.0.0.1'||a==='::1'||a==='::ffff:127.0.0.1';
 let lastCpu=null;
 const cpuPct=()=>{const c=os.cpus().reduce((a,x)=>{for(const k in x.times)a.t+=x.times[k];a.i+=x.times.idle;return a},{t:0,i:0});
   let p=0;if(lastCpu){const dt=c.t-lastCpu.t,di=c.i-lastCpu.i;p=dt>0?Math.round(100*(1-di/dt)):0}lastCpu=c;return p};
@@ -32,14 +32,17 @@ function createServer(opts={}){
   /* Le téléphone (origine http://localhost dans l'APK) doit pouvoir lire la version de l'APK proposée par le PC */
   app.get('/apk-version.json',(q,r,n)=>{r.set({'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'});n()});
   /* Caméras IP (dômes PTZ) : commande ONVIF + image dans la fenêtre du PC (réservé à 127.0.0.1) */
-  const cams=opts.cameras===false?null:require('./camera').mount(app,express,{dataDir:opts.dataDir});
+  const cams=opts.cameras===false?null:require('./camera').mount(app,express,{dataDir:opts.dataDir,cipher:opts.cipher});
   app.use(express.static(path.join(__dirname,'public')));
-  const srv=http.createServer(app),wss=new WebSocketServer({server:srv,path:'/ws',maxPayload:1<<17});
+  const srv=http.createServer(app),wss=new WebSocketServer({server:srv,path:'/ws',maxPayload:1<<17,
+    /* Refuse les pages d'autres sites (détournement depuis un navigateur du PC) et le DNS rebinding */
+    verifyClient:({req})=>{const local=isLocalAddr(req.socket.remoteAddress);
+      return originOk(req.headers.origin,req.headers.host,local)&&(!local||hostOk(req.headers.host))}});
   const rooms=new Map();
   const live=w=>!!w&&w.readyState===1;
   app.get('/info',(q,r)=>{
     /* Un appareil du réseau ne voit que ce qu'il faut pour retrouver le PC (la recherche automatique du téléphone) */
-    if(!isLocalAddr(q.socket.remoteAddress))return r.json({app:'tpr-live',name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',pin:!!PIN});
+    if(!isLocalAddr(q.socket.remoteAddress)||!hostOk(q.headers.host)||!originOk(q.headers.origin,q.headers.host,true))return r.json({app:'tpr-live',name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',pin:!!PIN});
     const port=srv.address().port,ips=[];
     for(const l of Object.values(os.networkInterfaces()))for(const i of l)if(i.family==='IPv4'&&!i.internal)ips.push(i.address+':'+port);
     const all=[...rooms.values()];
@@ -50,14 +53,20 @@ function createServer(opts={}){
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
-  hb.unref();srv.on('close',()=>{clearInterval(hb);wss.close();if(cams)cams.close()});
+  hb.unref();const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
   /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
+  /* Nombre de téléphones en direct : le PC s'en sert pour demander confirmation avant de quitter et pour ne pas se mettre à jour pendant un direct */
+  srv.liveCount=()=>[...rooms.values()].filter(x=>live(x.publisher)).length;
   srv.shutdown=()=>{try{if(cams)cams.close()}catch{}for(const w of wss.clients){try{w.terminate()}catch{}}try{srv.close()}catch{}if(srv.closeAllConnections)try{srv.closeAllConnections()}catch{}};
   wss.on('connection',(ws,req)=>{
     let room=null,role=null;ws.dead=false;ws._ip=req.socket.remoteAddress||'';
     ws.on('pong',()=>{ws.dead=false});
     ws.on('error',()=>{});
+    let wStart=Date.now(),wCount=0;
     ws.on('message',d=>{
+      /* Anti-inondation : un appareil qui envoie plus de 150 messages par seconde est coupé (le trafic normal en envoie une dizaine) */
+      const tn=Date.now();if(tn-wStart>1000){wStart=tn;wCount=0}
+      if(++wCount>150){ws.terminate();return}
       let m;try{m=JSON.parse(d)}catch{return}
       if(!m||typeof m!=='object')return;
       if(m.type==='join'){
@@ -72,6 +81,7 @@ function createServer(opts={}){
         }
         /* Place déjà prise par un autre appareil : on REFUSE le nouveau venu (4001) au lieu de couper celui qui est en ligne.
            Même appareil qui revient (même identifiant, ex. après une coupure Wi-Fi) : il reprend sa place (4000 pour l'ancienne connexion). */
+        if(!rooms.has(nr)&&rooms.size>=16){ws.close(1013,'rooms');return}   /* au plus 16 caméras simultanées */
         const cur=rooms.get(nr);
         if(cur&&live(cur[nrole])&&cur[nrole]!==ws&&!(cid&&cur[nrole].cid===cid)){send(ws,{type:'busy'});ws.close(4001,'busy');return}
         room=nr;role=nrole;ws.cid=cid;
@@ -107,6 +117,8 @@ function createServer(opts={}){
 }
 module.exports={createServer,loadPin};
 if(require.main===module){
+  process.on('uncaughtException',e=>console.error('Erreur inattendue (le serveur continue) :',e&&e.stack||e));
+  process.on('unhandledRejection',e=>console.error('Promesse rejetée (le serveur continue) :',e&&e.stack||e));
   const port=process.env.PORT||3000;
   const pin=loadPin();
   createServer({pin}).listen(port,'0.0.0.0',()=>{

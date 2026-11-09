@@ -182,6 +182,7 @@ input[type=text],select{background:rgba(0,0,0,.3);border-radius:12px}
   <div class="fld"><label for="mvol">Volume du micro : <output id="mvo">50</output> %</label><input type="range" id="mvol" min="0" max="100" step="5" style="width:100%;accent-color:var(--text)"><p class="hint">Baissez si le son est trop fort ou si ça « siffle » (retour entre le téléphone et les haut-parleurs de la salle).</p></div>
   <div class="fld"><label for="q">Qualité de l'image</label><select id="q"><option value="720">HD 720p (recommandé)</option><option value="1080">Full HD 1080p</option><option value="480">Économique 480p</option></select></div>
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
+  <div class="fld"><label for="prio">Priorité</label><select id="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select><p class="hint">Netteté : l'image reste en haute définition ; si le téléphone ou le réseau peine, ce sont quelques images qui sautent, jamais la définition qui baisse. Fluidité : l'inverse. Pris en compte au prochain démarrage du direct.</p></div>
   <div class="fld"><label for="fluid">Image fluide de nuit</label><select id="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité (recommandé la nuit)</option><option value="max">Fluidité maximale (image plus sombre)</option></select><p class="hint">Quand la lumière baisse, certains téléphones passent de 30 à 10 images par seconde et l'image « rame ». Ces réglages demandent à la caméra de garder 30 images par seconde. Pris en compte au prochain démarrage du direct. Tous les téléphones ne les acceptent pas.</p><p class="hint" id="fluidinfo"></p></div>
   <div id="diag">Le diagnostic apparaît pendant le direct.</div>
   <div id="ver"></div>
@@ -189,9 +190,9 @@ input[type=text],select{background:rgba(0,0,0,.3);border-radius:12px}
 
 <script>
 const VERSION='dev';
-const $=id=>document.getElementById(id),BR={480:1.2e6,720:2.5e6,1080:4.5e6};
+const $=id=>document.getElementById(id),BR={480:2e6,720:5e6,1080:8e6};
 let ws,pc,stream,facing='environment',running=false,wl,t0,last,ac,an,mt,rt,bad=0,muted=false,air=null;
-let outS,gn,cmp,hp,dst,lvl=0,okSince=0,lastAdapt=0,netBad=0,uiT;
+let outS,gn,cmp,hp,dst,lvl=0,okSince=0,lastAdapt=0,netBad=0,uiT,upWait=15000,lastUp=0;
 /* air : true = l'image de CETTE caméra est à l'antenne dans OBS ; false = pas à l'antenne ; null = inconnu (connexion en cours ou perdue) */
 const AIR={on:['À L\'ANTENNE','Votre image est diffusée en direct'],off:['PAS À L\'ANTENNE','Votre image n\'est pas diffusée'],unk:['STATUT INCONNU','En attente de la réponse du PC…']};
 const livePill=()=>pill(air===true?'À L\'ANTENNE':air===false?'Connecté · pas à l\'antenne':'Connecté');
@@ -206,7 +207,7 @@ setAir(null);
 $('addr').value=localStorage.addr||(/^(localhost|127\.)/.test(location.hostname)||!location.host?'':location.host);
 $('cam').value=localStorage.cam||'1';$('code').value=localStorage.code||'';
 const TID=localStorage.tid||(localStorage.tid=Math.random().toString(36).slice(2)+Date.now().toString(36));   /* identifie CE téléphone : il reprend sa place après une coupure */
-$('q').value=localStorage.q||'720';$('fluid').value=localStorage.fluid||'off';$('codec').value=localStorage.codec||'h264';
+$('q').value=localStorage.q||'720';$('fluid').value=localStorage.fluid||'off';$('codec').value=localStorage.codec||'h264';$('prio').value=localStorage.prio||'sharp';
 $('mvol').value=localStorage.mvol||50;$('mvo').textContent=$('mvol').value;
 $('ver').textContent=VERSION==='dev'?'Version de développement':'TPR Live '+VERSION;
 const ROOM=()=>$('cam').value==='1'?'main':'cam'+$('cam').value;
@@ -214,7 +215,7 @@ const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
 const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
 const openSet=()=>$('sheet').showModal();
-['addr','q','codec','cam','code','fluid'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
+['addr','q','codec','prio','cam','code','fluid'].forEach(k=>$(k).onchange=()=>localStorage[k]=$(k).value.trim());
 $('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
 $('mvol').oninput=()=>{localStorage.mvol=$('mvol').value;$('mvo').textContent=$('mvol').value;applyGain()};
 if(!$('addr').value)msg('Saisissez l\'adresse du PC dans les réglages.');
@@ -236,14 +237,35 @@ async function lowLight(vt,c){
   try{await vt.applyConstraints({advanced:a});info.textContent='Sur ce téléphone : '+ok.join(', ')+'.'}
   catch{EXTRA=[];info.textContent='Ce téléphone refuse ces réglages. Éclairez davantage la scène.'}
 }
+/* Reprise automatique : appel téléphonique, autre application qui prend la caméra ou le micro, image figée… On rouvre la caméra et on
+   remplace les pistes dans la connexion en cours, sans couper le direct. En cas d'échec, on réessaie (3 s, 6 s… puis toutes les 15 s). */
+let recT=0,recBusy=false,recTries=0,zeroFps=0;
+function scheduleRecover(ms){if(!running)return;clearTimeout(recT);recT=setTimeout(recoverCam,ms)}
+async function recoverCam(){
+  if(!running||recBusy)return;recBusy=true;
+  try{
+    msg('Caméra interrompue : reprise automatique…');
+    await cam();
+    if(pc)for(const sd of pc.getSenders()){
+      const k=sd.track&&sd.track.kind,t=k==='video'?stream.getVideoTracks()[0]:k==='audio'?(outS||stream).getAudioTracks()[0]:null;
+      if(t)await sd.replaceTrack(t);
+    }
+    recTries=0;zeroFps=0;msg('');
+  }catch{recTries++;scheduleRecover(Math.min(3000*recTries,15000))}
+  finally{recBusy=false}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!running)return;
+  const t=stream&&stream.getVideoTracks()[0];if(!t||t.readyState==='ended')scheduleRecover(300)});
 async function cam(){
   if(stream)stream.getTracks().forEach(t=>t.stop());
   const h=+$('q').value;
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:h*16/9},height:{ideal:h},frameRate:{ideal:30,max:30}},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
   const vt=stream.getVideoTracks()[0],c=vt.getCapabilities?vt.getCapabilities():{};
-  try{vt.contentHint='motion'}catch{}
+  try{vt.contentHint=$('prio').value==='sharp'?'detail':'motion'}catch{}
   await lowLight(vt,c);
-  setNocam(false);vt.onended=vt.onmute=()=>setNocam(true);vt.onunmute=()=>setNocam(false);   /* caméra coupée ou prise par une autre application : on le dit */
+  setNocam(false);vt.onmute=()=>setNocam(true);vt.onunmute=()=>setNocam(false);vt.onended=()=>{setNocam(true);scheduleRecover(1500)};
+  stream.getAudioTracks().forEach(t=>t.onended=()=>scheduleRecover(1500));   /* caméra coupée ou prise par une autre application : on le dit */
   $('v').srcObject=stream;document.body.classList.add('cam');
   $('torch').classList.toggle('show',!!c.torch);$('zoomwrap').classList.toggle('show',!!c.zoom);
   if(c.zoom){$('zoom').min=c.zoom.min;$('zoom').max=c.zoom.max;$('zoom').step=c.zoom.step||.1;$('zoom').value=c.zoom.min}
@@ -278,13 +300,46 @@ function connect(){
     if(e.code===4001&&running){if(++busy>8){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}
       pill('Caméra occupée…','wait');msg('Cette caméra est déjà utilisée par un autre téléphone. Nouvelle tentative…');setTimeout(connect,3000);return}
     if(e.code===4000&&running){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}if(running){if(!ok&&++fails%3===0)discover();if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
-  w.onmessage=async e=>{const m=JSON.parse(e.data);
-    if(m.type==='busy'||m.type==='denied')return;busy=0;
-    if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
-    else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:m.sdp});
-    else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
-    else if(m.type==='onair')setAir(m.value)
-    else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');setAir(false);pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}};
+  w.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+    try{await onMsg(m)}catch{
+      /* négociation vidéo en échec : on le dit et on recommence, au lieu de rester « connecté » sans image */
+      msg('Erreur de connexion vidéo : nouvelle tentative…');
+      setTimeout(()=>{if(running&&(!pc||pc.connectionState!=='connected'))offer().catch(()=>{})},2000)}};
+}
+async function onMsg(m){
+  if(m.type==='busy'||m.type==='denied')return;busy=0;
+  if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
+  else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:tune(m.sdp)});
+  else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
+  else if(m.type==='onair')setAir(m.value)
+  else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');setAir(false);pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}
+}
+/* Évite que l'estimation de débit de Chrome ne démarre bas et ne fasse chuter la qualité : on impose un départ élevé et un plancher
+   (paramètres lus par l'encodeur dans la réponse d'OBS). En cas de doute, la description d'origine est conservée. */
+function tune(sdp){
+  try{
+    const mx=Math.round(BR[$('q').value]/1000),x='x-google-min-bitrate='+Math.round(mx*.35)+';x-google-start-bitrate='+Math.round(mx*.8)+';x-google-max-bitrate='+mx;
+    const L=sdp.split('\r\n');let a=L.findIndex(l=>l.startsWith('m=video'));if(a<0)return sdp;
+    let b=L.findIndex((l,i)=>i>a&&l.startsWith('m='));if(b<0)b=L.length;
+    const pts=[];for(let i=a;i<b;i++){const m=/^a=rtpmap:(\d+) (H264|VP8|VP9|AV1)\//i.exec(L[i]);if(m)pts.push(m[1])}
+    const out=L.slice(0,a);
+    for(let i=a;i<b;i++){
+      const f=/^a=fmtp:(\d+) /.exec(L[i]);
+      if(f&&pts.includes(f[1])&&!/x-google-min-bitrate/.test(L[i])){out.push(L[i]+';'+x);continue}
+      out.push(L[i]);
+      const r=/^a=rtpmap:(\d+) /.exec(L[i]);
+      if(r&&pts.includes(r[1])&&!L.slice(a,b).some(l=>l.startsWith('a=fmtp:'+r[1]+' ')))out.push('a=fmtp:'+r[1]+' '+x);
+    }
+    return out.concat(L.slice(b)).join('\r\n');
+  }catch{return sdp}
+}
+/* Alertes du téléphone lui-même : chaleur (Android 10+) et batterie faible hors charge */
+function hwWarn(v){
+  v=v||{};
+  if(v.thermal>=3)return 'Le téléphone est trop chaud et va ralentir : branchez-le sur secteur, retirez la coque et mettez-le à l\'ombre.';
+  if(v.thermal===2)return 'Le téléphone chauffe : retirez la coque, évitez le soleil et branchez-le sur secteur.';
+  if(typeof v.battery==='number'&&v.battery<=20&&v.charging===false)return 'Batterie faible ('+v.battery+' %) et téléphone non branché : branchez-le maintenant.';
+  return '';
 }
 async function offer(){
   if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
@@ -297,8 +352,8 @@ async function offer(){
   const tr=pc.getTransceivers().find(t=>t.sender.track&&t.sender.track.kind==='video'),s=tr.sender,p=s.getParameters();
   if(!p.encodings||!p.encodings.length)p.encodings=[{}];
   p.encodings[0].maxBitrate=BR[$('q').value];p.encodings[0].maxFramerate=30;p.encodings[0].priority='high';p.encodings[0].networkPriority='high';
-  p.degradationPreference='maintain-framerate';
-  lvl=0;okSince=0;netBad=0;p.encodings[0].scaleResolutionDownBy=1;
+  p.degradationPreference=$('prio').value==='sharp'?'maintain-resolution':'maintain-framerate';   /* netteté : on laisse sauter des images plutôt que de baisser la définition */
+  lvl=0;okSince=0;netBad=0;upWait=15000;lastUp=0;p.encodings[0].scaleResolutionDownBy=1;
   await s.setParameters(p).catch(()=>{});
   const pref=$('codec').value;
   if(pref!=='auto'){try{const all=RTCRtpSender.getCapabilities('video').codecs,w=pref==='h264'?/h264/i:/vp8/i;
@@ -313,7 +368,7 @@ function diagnose(fps,lim,loss,h){
   return '';
 }
 /* Qualité adaptative : si le réseau ou le processeur du téléphone n'arrive pas à suivre, on baisse la résolution et le débit AVANT que l'image ne rame ; on remonte tout seul quand ça va mieux. */
-const LV=[{f:1,b:1},{f:1.5,b:.6},{f:2,b:.35}];
+const LV=[{f:1,b:1},{f:1.33,b:.75},{f:1.5,b:.6}];   /* jamais en dessous de ~480p : une image floue est pire qu'une image un peu moins fluide */
 async function setLevel(n){
   if(!pc)return;lvl=n;
   const sd=pc.getSenders().find(x=>x.track&&x.track.kind==='video');if(!sd)return;
@@ -321,10 +376,16 @@ async function setLevel(n){
   p.encodings[0].maxBitrate=BR[$('q').value]*LV[n].b;p.encodings[0].scaleResolutionDownBy=LV[n].f;
   await sd.setParameters(p).catch(()=>{});
 }
-function adapt(d,nb,now){
-  if(!pc||pc.connectionState!=='connected'||now-lastAdapt<8000)return;
-  if(nb>=3&&lvl<LV.length-1){lastAdapt=now;okSince=0;setLevel(lvl+1);return}
-  if(!d){okSince=okSince||now;if(lvl>0&&now-okSince>25000){lastAdapt=now;okSince=0;setLevel(lvl-1)}}else okSince=0;
+/* net = vrai problème de réseau ou de processeur (pas la lumière faible, pas une simple estimation prudente de débit).
+   Descente : 5 secondes de vrai problème. Remontée : après un calme prolongé ; si ça redescend aussitôt, on attend de plus en plus longtemps (plus d'yo-yo). */
+function adapt(net,nb,now){
+  if($('prio').value==='sharp')return;   /* mode netteté : la définition et le débit ne sont jamais réduits */
+  if(!pc||pc.connectionState!=='connected'||now-lastAdapt<10000)return;
+  if(nb>=5&&lvl<LV.length-1){if(now-lastUp<60000)upWait=Math.min(upWait*2,120000);lastAdapt=now;okSince=0;setLevel(lvl+1);return}
+  if(!net){okSince=okSince||now;
+    if(lvl>0&&now-okSince>upWait){lastAdapt=now;lastUp=now;okSince=0;setLevel(lvl-1)}
+    else if(lvl===0&&now-okSince>300000)upWait=15000}
+  else okSince=0;
 }
 setInterval(async()=>{
   if(!pc||pc.connectionState!=='connected')return;
@@ -341,14 +402,17 @@ setInterval(async()=>{
   /* Pendant les 15 premières secondes le débit monte : la limitation « bandwidth » est normale, ne pas alarmer */
   const hh=o.frameHeight||0;if(hh>peakH)peakH=hh;
   const d=(t0&&now-t0<15000)?'':diagnose(fps,o.qualityLimitationReason,rin?rin.fractionLost||0:0,hh);
-  const net=!!d&&(o.qualityLimitationReason==='cpu'||o.qualityLimitationReason==='bandwidth'||(rin&&rin.fractionLost>.03));
+  const warm=t0&&now-t0<15000,lim=o.qualityLimitationReason,lossF=rin?rin.fractionLost||0:0,rttMs=rtt?rtt*1000:0;
+  const net=!warm&&(lim==='cpu'||lossF>.03||(lim==='bandwidth'&&(rttMs>150||lossF>.01)));
   netBad=net?netBad+1:0;
-  bad=d?bad+1:0;adapt(d,netBad,now);
-  if(bad>=3)alertBox(d);else if(!d){alertBox('');$('diag').textContent='Tout va bien : '+Math.round(fps)+' images par seconde, '+(kbps/1000).toFixed(1)+' Mb/s.'}
+  zeroFps=(!warm&&fps===0)?zeroFps+1:0;if(zeroFps>=8){zeroFps=0;scheduleRecover(0)}   /* plus aucune image depuis 8 s : caméra figée, on la rouvre */
+  const hw=hwWarn(dev);
+  bad=d?bad+1:0;adapt(net,netBad,now);
+  if(bad>=3)alertBox(d);else if(hw)alertBox(hw);else if(!d){alertBox('');$('diag').textContent='Tout va bien : '+Math.round(fps)+' images par seconde, '+(kbps/1000).toFixed(1)+' Mb/s.'}
   /* envoi des mesures au PC (affichées dans la fenêtre TPR Live) */
   if(tick++%2===0){try{dev=JSON.parse(window.TPRNative&&TPRNative.status?TPRNative.status():'{}')}catch{dev={}}}
   sj({type:'stats',cam:+$('cam').value,res:(o.frameWidth||0)+'×'+(o.frameHeight||0),fps:Math.round(fps),mbps:+(kbps/1000).toFixed(2),codec:cd?cd.mimeType.replace('video/',''):'',
-    rtt:rtt?Math.round(rtt*1000):null,limit:o.qualityLimitationReason||'none',loss:+(((rin&&rin.fractionLost)||0)*100).toFixed(1),level:d?(bad>=3?'bad':'warn'):'ok',diag:d,sec:s,muted:muted,q:+$('q').value,
+    rtt:rtt?Math.round(rtt*1000):null,limit:o.qualityLimitationReason||'none',loss:+(((rin&&rin.fractionLost)||0)*100).toFixed(1),level:d?(bad>=3?'bad':'warn'):hw?'warn':'ok',diag:d||hw,thermal:dev.thermal,sec:s,muted:muted,q:+$('q').value,
     rssi:dev.rssi,link:dev.link,battery:dev.battery,charging:dev.charging});
 },1000);
 $('go').onclick=async()=>{
@@ -392,20 +456,28 @@ let tick=0,dev={},updShown=false;
 async function checkUpdate(){
   if(VERSION==='dev'||updShown)return;
   const gt=(x,y)=>{x=x.split('.').map(Number);y=y.split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
-  const show=(v,url)=>{updShown=true;const l=document.createElement('a');l.href=url;l.target='_blank';l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';
-    l.onclick=e=>{if(window.TPRNative){e.preventDefault();l.textContent='Téléchargement de la version '+v+'…';try{TPRNative.install(url)}catch{l.textContent='Échec du téléchargement'}}};
+  const show=(v,url,sha)=>{updShown=true;const l=document.createElement('a');l.href=url;l.target='_blank';
+    if(!/^[0-9a-f]{64}$/i.test(sha||'')){l.removeAttribute('href');l.textContent='Version '+v+' disponible, mais sans empreinte de sécurité : mettez d\'abord le PC à jour';$('upd').appendChild(l);return}
+    l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';
+    l.onclick=e=>{if(window.TPRNative){e.preventDefault();l.textContent='Téléchargement de la version '+v+'…';try{TPRNative.install(url,sha)}catch{l.textContent='Échec du téléchargement'}}};
     $('upd').appendChild(l)};
+  /* Empreinte officielle publiée sur GitHub (HTTPS) : sert à vérifier ce que le PC propose, quand le téléphone a Internet */
+  const gh=async()=>{try{const c=new AbortController();setTimeout(()=>c.abort(),4000);
+    const j=await (await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest',{signal:c.signal})).json();
+    const m=/sha256:\s*([0-9a-f]{64})/i.exec(j.body||''),a=(j.assets||[]).find(x=>x.name==='church-live.apk');
+    return{v:(j.tag_name||'').replace(/^v/,''),sha:m?m[1].toLowerCase():'',url:a&&a.browser_download_url}}catch{return null}};
   /* 1) auprès du PC (fonctionne sans Internet : le PC se met à jour seul, puis fournit l'APK au téléphone) */
   const base=$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'');
   if(base){try{const j=await (await fetch('http://'+base+'/apk-version.json',{cache:'no-store'})).json();
-    if(j.version&&gt(j.version,VERSION)){show(j.version,'http://'+base+'/church-live.apk');return}}catch{}}
+    if(j.version&&gt(j.version,VERSION)){
+      const g=await gh();
+      if(g&&g.v===j.version&&g.sha&&j.sha256&&g.sha!==String(j.sha256).toLowerCase()){msg('Mise à jour refusée : le fichier proposé par le PC ne correspond pas à la version officielle.');return}
+      show(j.version,'http://'+base+'/church-live.apk',j.sha256);return}}catch{}}
   /* 2) sinon auprès de GitHub (si le téléphone a Internet) */
-  try{
-    const j=await (await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest')).json();
-    const v=(j.tag_name||'').replace(/^v/,''),a=(j.assets||[]).find(x=>x.name==='church-live.apk');
-    if(a&&gt(v,VERSION))show(v,a.browser_download_url);
-  }catch{}
+  const g=await gh();
+  if(g&&g.url&&g.sha&&gt(g.v,VERSION))show(g.v,g.url,g.sha);
 }
+window.onTprUpdateFailed=t=>{msg(t);const l=$('upd').querySelector('a');if(l)l.textContent='Échec de la mise à jour : toucher pour réessayer'};
 checkUpdate();$('addr').addEventListener('change',checkUpdate);
 
 /* Commandes : visibles au démarrage, puis elles se cachent seules ; toucher l'écran les fait revenir ou disparaître */
