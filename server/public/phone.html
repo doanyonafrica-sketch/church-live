@@ -310,7 +310,7 @@ function connect(){
    (Wi-Fi coupé sans fermeture propre) : on en ouvre une neuve tout de suite au lieu d'attendre des minutes. */
 /* Journal : les événements sont gardés dans le téléphone (même hors connexion) puis envoyés au PC dès que la liaison revient */
 const LB=[];
-function plog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift();flushLog()}
+function plog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift()}   /* mis en attente seulement : l'envoi se fait par la minuterie de 3 s, jamais au milieu d'une négociation vidéo */
 function flushLog(){if(!ws||ws.readyState!==1||!LB.length)return;const now=Date.now();
   sj({type:'log',items:LB.splice(0,50).map(x=>({ev:x.ev,d:x.d,ago:now-x.ts}))})}
 document.addEventListener('visibilitychange',()=>{if(running)plog(document.hidden?'app-hidden':'app-visible')});

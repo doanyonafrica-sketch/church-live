@@ -41,7 +41,7 @@ const note=t=>{msg.textContent=t;msg.style.display=t?'block':'none'};
 let ws,pc,q=Promise.resolve(),prev;
 /* Journal : événements envoyés au PC (journal du direct) */
 const LB=[];
-function olog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift();flushLog()}
+function olog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift()}   /* mis en attente seulement : l'envoi se fait par la minuterie de 3 s, jamais au milieu d'une négociation vidéo */
 function flushLog(){if(!ws||ws.readyState!==1||!LB.length)return;const now=Date.now();
   sj({type:'log',items:LB.splice(0,50).map(x=>({ev:x.ev,d:x.d,ago:now-x.ts}))})}
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
