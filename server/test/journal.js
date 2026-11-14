@@ -14,6 +14,20 @@ function session(t,withCut){
 }
 session(now-D-3*3600e3,true);   /* test d'hier */
 session(now-3600e3,false);      /* test d'aujourd'hui */
+/* Cas du rapport réel : le téléphone tombe (1006) et ne revient pas ; une autre caméra n'a qu'OBS */
+const dir2=fs.mkdtempSync(path.join(os.tmpdir(),'j2-'));const K=createJournal(dir2),u=now-600e3;
+K.log('server-start',{},u);K.log('join',{room:'main',role:'viewer'},u+100);K.log('join',{room:'main',role:'publisher',how:'new'},u+1000);
+K.log('join',{room:'cam2',role:'viewer'},u+200);K.log('snap',{room:'cam2',pub:false,view:true},u+10000);
+for(let i=0;i<5;i++)K.log('snap',{room:'main',pub:true,view:true,fps:20,mbps:1,rtt:100,level:'bad'},u+5000+i*10000);
+K.log('close',{room:'main',role:'publisher',code:1006,secs:60},u+70000);K.log('dead',{room:'main',role:'publisher'},u+70100);K.log('left',{room:'main',role:'publisher'},u+74000);
+K.log('join',{room:'main',role:'publisher',how:'new'},u+90000);K.log('close',{room:'main',role:'publisher',code:1005,secs:5},u+95000);   /* retour puis arrêt volontaire */
+K.log('close',{room:'main',role:'publisher',code:1006,secs:5},u+99000);
+setTimeout(()=>{
+  const x=summarize(K.read(1)).text;
+  assert(/ne s'est PAS reconnecté après la coupure/.test(x),'coupure non terminée signalée');
+  assert(!/null/.test(x),'aucune valeur « null » dans le résumé');
+  assert(/Aucun téléphone n'a utilisé cette caméra/.test(x));
+},300);
 setTimeout(()=>{
   const raw=fs.readFileSync(J.files(2)[0],'utf8').split('\n')[0];
   assert(/"h":"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"/.test(raw),'horodatage lisible absent');

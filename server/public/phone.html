@@ -369,7 +369,7 @@ function hwWarn(v){
   return '';
 }
 async function offer(){
-  plog('offer');
+  plog('offer');last=null;   /* nouvelle liaison : les compteurs repartent de zéro, sans quoi le premier débit mesuré serait négatif */
   if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
   pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
   pc.onconnectionstatechange=()=>{const s=pc.connectionState;plog('pc-'+s);
@@ -419,7 +419,7 @@ setInterval(async()=>{
   if(!pc||pc.connectionState!=='connected')return;
   const r=await pc.getStats();let o,rtt,rin;const codecs={};
   r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;else if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime;else if(x.type==='codec')codecs[x.id]=x;else if(x.type==='remote-inbound-rtp'&&x.kind==='video')rin=x});
-  if(!o)return;const now=Date.now(),kbps=last?Math.round((o.bytesSent-last.b)*8/(now-last.t)):0;last={b:o.bytesSent,t:now};
+  if(!o)return;const now=Date.now(),kbps=last?Math.max(0,Math.round((o.bytesSent-last.b)*8/(now-last.t))):0;last={b:o.bytesSent,t:now};
   const fps=o.framesPerSecond||0,cd=codecs[o.codecId];
   $('c2').textContent=(o.frameWidth||'?')+'×'+(o.frameHeight||'?')+' à '+Math.round(fps)+' i/s';
   $('c3').textContent=(kbps/1000).toFixed(1)+' Mb/s';

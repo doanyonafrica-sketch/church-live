@@ -41,6 +41,7 @@ function cleanClientLog(m,now){
     o.t=now-ago;out.push(o)}
   return out;
 }
+const N=x=>x==null?'n/d':x;   /* valeur absente : on écrit « n/d », jamais « null » */
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null,r1=x=>x==null?null:Math.round(x*10)/10;
 const fmtDur=s=>{s=Math.round(s);return s<60?s+' s':s<3600?Math.floor(s/60)+' min '+pad(s%60)+' s':Math.floor(s/3600)+' h '+pad(Math.floor(s/60)%60)+' min'};
 const dm=t=>{const d=new Date(t);return pad(d.getDate())+'/'+pad(d.getMonth()+1)+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())};
@@ -59,7 +60,7 @@ function summarizeSession(ev,L){
     if(!e.room)continue;const r=R(e.room);
     if(e.ev==='join'){if(e.role==='publisher'){r.pubJoin++;if(r.since!=null){r.outages.push({from:r.since,to:e.t,secs:(e.t-r.since)/1000});r.since=null}}else r.viewJoin++}
     else if(e.ev==='close'){const k=e.role+':'+e.code;r.codes[k]=(r.codes[k]||0)+1;
-      if(e.role==='publisher'){r.pubClose++;if(e.code!==4000&&r.since==null)r.since=e.t}else r.viewClose++}
+      if(e.role==='publisher'){r.pubClose++;if(![4000,1000,1001,1005].includes(e.code)&&r.since==null)r.since=e.t}else r.viewClose++}   /* 1000/1001/1005 : arrêt normal ; 4000 : remplacé par le même téléphone */
     else if(e.ev==='dead')r.dead++;
     else if(e.ev==='left')r.left++;
     else if(e.ev==='need-offer')r.needOffer++;
@@ -74,6 +75,7 @@ function summarizeSession(ev,L){
   for(const [name,r] of Object.entries(rooms)){
     L.push('','--- Caméra « '+name+' » ---');
     const live=r.snaps.filter(s=>s.pub&&s.view);
+    if(!r.pubJoin&&!r.pubClose&&r.viewJoin)L.push('Aucun téléphone n\'a utilisé cette caméra (seulement la source OBS).');
     L.push('Téléphone : '+r.pubJoin+' connexion(s), '+r.pubClose+' fermeture(s). OBS : '+r.viewJoin+' connexion(s), '+r.viewClose+' fermeture(s).');
     L.push('Liaisons détectées mortes par le serveur : '+r.dead+'. Départs annoncés (coupure > 4 s) : '+r.left+'. Renégociations demandées par OBS : '+r.needOffer+'.');
     if(r.busy||r.denied)L.push('Refus : '+r.busy+' caméra occupée, '+r.denied+' mauvais code.');
@@ -82,20 +84,23 @@ function summarizeSession(ev,L){
       L.push('Coupures du téléphone : '+r.outages.length+' (plus longue : '+fmtDur(worst)+', moyenne : '+fmtDur(avg(r.outages.map(o=>o.secs)))+').');
       for(const o of r.outages.slice(0,15))L.push('   • '+dm(o.from)+' → '+dm(o.to)+'  ('+fmtDur(o.secs)+')');
       if(r.outages.length>15)L.push('   … et '+(r.outages.length-15)+' autres.')}
-    else L.push('Aucune coupure complète du téléphone.');
+    if(r.since!=null){const end=ev[ev.length-1].t;
+      L.push('⚠ Le téléphone ne s\'est PAS reconnecté après la coupure de '+dm(r.since)+' : aucun retour jusqu\'à la fin du journal ('+fmtDur((end-r.since)/1000)+' sans caméra).')}
+    else if(!r.outages.length)L.push('Aucune coupure du téléphone.');
     if(r.sets.length){const seen=[];for(const e of r.sets){const d='qualité '+e.q+'p, priorité '+e.prio+', fluidité '+e.fluid+', codec '+e.codec+(e.muted?', micro coupé':'');
         if(!seen.length||seen[seen.length-1].d!==d)seen.push({t:e.t,d})}
       L.push('Réglages du téléphone : '+seen.slice(0,6).map(x=>clock(x.t)+' '+x.d).join(' ; ')+(seen.length>6?' ; …':'')+(r.remote?' (réglages envoyés depuis le PC : '+r.remote+')':''))}
-    if(r.snaps.length){
-      const col=k=>r.snaps.map(s=>s[k]).filter(x=>typeof x==='number'),mn=a=>a.length?Math.min(...a):null,mx=a=>a.length?Math.max(...a):null;
+    const ps=r.snaps.filter(s=>s.pub);
+    if(ps.length){
+      const col=k=>ps.map(s=>s[k]).filter(x=>typeof x==='number'),mn=a=>a.length?Math.min(...a):null,mx=a=>a.length?Math.max(...a):null;
       L.push('Pendant le direct ('+fmtDur(live.length*10)+' avec téléphone et OBS reliés) :');
-      L.push('   images/s : moyenne '+r1(avg(col('fps')))+', minimum '+mn(col('fps'))+'   |   débit : moyenne '+r1(avg(col('mbps')))+' Mb/s, minimum '+mn(col('mbps')));
-      L.push('   latence : moyenne '+r1(avg(col('rtt')))+' ms, maximum '+mx(col('rtt'))+' ms   |   pertes : moyenne '+r1(avg(col('loss')))+' %, maximum '+mx(col('loss'))+' %');
-      L.push('   gigue côté OBS : max '+mx(col('vjitter'))+' ms   |   images perdues par OBS : '+col('vdropped').reduce((a,b)=>a+b,0)+'   |   paquets perdus : '+col('vlost').reduce((a,b)=>a+b,0));
-      L.push('   Wi-Fi (rssi) : pire '+mn(col('rssi'))+' dBm   |   batterie : minimum '+mn(col('battery'))+' %   |   chauffe max : '+mx(col('thermal')));
-      const lim={};for(const s of r.snaps)if(s.limit&&s.limit!=='none')lim[s.limit]=(lim[s.limit]||0)+1;
+      L.push('   images/s : moyenne '+N(r1(avg(col('fps'))))+', minimum '+N(mn(col('fps')))+'   |   débit : moyenne '+N(r1(avg(col('mbps'))))+' Mb/s, minimum '+N(mn(col('mbps'))));
+      L.push('   latence : moyenne '+N(r1(avg(col('rtt'))))+' ms, maximum '+N(mx(col('rtt')))+' ms   |   pertes : moyenne '+N(r1(avg(col('loss'))))+' %, maximum '+N(mx(col('loss')))+' %');
+      L.push('   gigue côté OBS : max '+N(mx(col('vjitter')))+' ms   |   images perdues par OBS : '+col('vdropped').reduce((a,b)=>a+b,0)+'   |   paquets perdus : '+col('vlost').reduce((a,b)=>a+b,0));
+      L.push('   Wi-Fi (rssi) : pire '+N(mn(col('rssi')))+' dBm   |   batterie : minimum '+N(mn(col('battery')))+' %   |   chauffe max : '+N(mx(col('thermal'))));
+      const lim={};for(const s of ps)if(s.limit&&s.limit!=='none')lim[s.limit]=(lim[s.limit]||0)+1;
       const ls=Object.entries(lim).map(([k,v])=>k+' '+v*10+' s').join(', ');if(ls)L.push('   Qualité limitée par : '+ls);
-      const bad=r.snaps.filter(s=>s.level==='bad').length*10;if(bad)L.push('   Temps en alerte « mauvais » : '+fmtDur(bad));
+      const bad=ps.filter(s=>s.level==='bad').length*10;if(bad)L.push('   Temps en alerte « mauvais » : '+fmtDur(bad));
     }
     const cl=Object.entries(r.client).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+' ×'+v);
     if(cl.length)L.push('Événements signalés par les appareils : '+cl.join(', '));
