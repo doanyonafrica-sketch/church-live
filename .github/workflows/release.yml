@@ -40,11 +40,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Installer les dépendances
         run: npm ci
         working-directory: server
-      - name: Tests (appairage, sécurité, WebRTC, caméras)
+      - name: Serveur RTSP de test (MediaMTX) pour le test du flux vidéo des caméras IP
+        working-directory: server
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/mtx.tgz" https://github.com/bluenviron/mediamtx/releases/download/v1.21.3/mediamtx_v1.21.3_linux_amd64.tar.gz
+          echo "0a2ea7eba96023631efa1bea7804823a9145b043b6646a8a05798d4ac24ed635  $RUNNER_TEMP/mtx.tgz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/mtx.tgz" -C "$RUNNER_TEMP" mediamtx
+          echo "MEDIAMTX=$RUNNER_TEMP/mediamtx" >> "$GITHUB_ENV"
+          echo "$(dirname "$(node -p "require('ffmpeg-static')")")" >> "$GITHUB_PATH"
+      - name: Tests (appairage, sécurité, page OBS, WebRTC, caméras IP avec flux vidéo réel)
         run: npm test
         working-directory: server
   apk:
@@ -55,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -63,20 +71,15 @@ jobs:
       - name: Build APK
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          ALLOW_PUBLIC_KEY: ${{ vars.ALLOW_PUBLIC_KEY }}
         run: |
           mkdir -p ~/.android
-          # La clé de signature doit rester PRIVÉE (secret GitHub ANDROID_KEYSTORE_B64) : celle du dépôt est publique,
-          # donc n'importe qui pourrait signer un faux APK qui s'installerait par-dessus.
-          if [ -n "$KS_B64" ]; then
-            echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
-          elif [ "$ALLOW_PUBLIC_KEY" = "true" ]; then
-            echo "::warning::APK signé avec la clé PUBLIQUE du dépôt (variable ALLOW_PUBLIC_KEY=true). À remplacer par le secret ANDROID_KEYSTORE_B64."
-            cp mobile/signing/debug.keystore ~/.android/debug.keystore
-          else
-            echo "::error::Secret ANDROID_KEYSTORE_B64 absent : compilation refusée (voir README, section « Sécurité de la signature »)."
+          # La clé de signature doit rester PRIVÉE (secret GitHub ANDROID_KEYSTORE_B64) : une clé présente dans le dépôt public
+          # permettrait à n'importe qui de signer un faux APK qui s'installerait par-dessus.
+          if [ -z "$KS_B64" ]; then
+            echo "::error::Secret ANDROID_KEYSTORE_B64 absent : compilation refusée (voir README, section « Signature de l'APK »)."
             exit 1
           fi
+          echo "$KS_B64" | base64 -d > ~/.android/debug.keystore
           mkdir -p mobile/www && cp server/public/phone.html mobile/www/index.html && cp server/public/attente.mp4 server/public/attente.webm mobile/www/
           sed -i "s/const VERSION='dev'/const VERSION='${{ needs.version.outputs.v }}'/" mobile/www/index.html
           cd mobile
@@ -86,12 +89,28 @@ jobs:
           sed -i 's#<activity\b#<activity android:screenOrientation="sensorLandscape"#' android/app/src/main/AndroidManifest.xml
           grep -q sensorLandscape android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><application#' android/app/src/main/AndroidManifest.xml
+          # Service au premier plan « caméra + micro » pendant le direct (mobile/patch/LiveService.java)
+          sed -i 's#<application#<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</application>#<service android:name=".LiveService" android:exported="false" android:foregroundServiceType="camera|microphone"/></application>#' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".LiveService"' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cp patch/MainActivity.java android/app/src/main/java/africa/doanyon/churchlive/MainActivity.java
+          cp patch/LiveService.java android/app/src/main/java/africa/doanyon/churchlive/LiveService.java
           VER="${{ needs.version.outputs.v }}"; IFS=. read -r MA MI PA <<< "$VER"
           sed -i "s/versionCode 1/versionCode $((10#$MA*10000+10#$MI*100+10#$PA))/; s/versionName \"1.0\"/versionName \"$VER\"/" android/app/build.gradle
-          cd android && chmod +x gradlew && ./gradlew assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk ../../church-live.apk
+          # APK « release » (non débogable), signé ensuite avec la MÊME clé que précédemment : les mises à jour s'installent par-dessus.
+          cd android && chmod +x gradlew && ./gradlew assembleRelease -x lintVitalRelease
+          APKU=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -p -f 4 "$APKU" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks ~/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out ../../church-live.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs ../../church-live.apk
+          # Contrôles : non débogable, permissions et service du direct présents
+          "$BT/aapt2" dump badging ../../church-live.apk > "$RUNNER_TEMP/badging.txt"
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml ../../church-live.apk > "$RUNNER_TEMP/manifest.txt"
+          if grep -q "application-debuggable" "$RUNNER_TEMP/badging.txt"; then echo "::error::L'APK est encore débogable."; exit 1; fi
+          grep -q "android.permission.FOREGROUND_SERVICE_CAMERA" "$RUNNER_TEMP/badging.txt"
+          grep -q "LiveService" "$RUNNER_TEMP/manifest.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: church-live-apk-release
@@ -104,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - uses: actions/download-artifact@v4
         with:
           name: church-live-apk-release
@@ -113,7 +132,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signature de l'installeur Windows (facultative) : secrets WIN_CSC_LINK (certificat .pfx en base64) et WIN_CSC_KEY_PASSWORD
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
+          if [ -z "$CSC_LINK" ]; then echo "::notice::Installeur Windows NON signé (secret WIN_CSC_LINK absent) : Windows SmartScreen affichera un avertissement."; fi
           mkdir desktop/server && cp server/*.js desktop/server/ && cp -r server/public desktop/server/
           # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
           cp apk/church-live.apk desktop/server/public/church-live.apk

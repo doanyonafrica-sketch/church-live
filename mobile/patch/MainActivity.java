@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -40,7 +41,8 @@ import org.json.JSONObject;
 /* 1) Force le mode paysage (image 16:9 pour YouTube).
    2) Garde le Wi-Fi en haute performance pendant le direct (évite les gels périodiques).
    3) Retrouve automatiquement le PC sur le réseau (Wi-Fi ou partage USB).
-   4) Télécharge la mise à jour de l'APK puis ouvre directement l'écran d'installation Android. */
+   4) Télécharge la mise à jour de l'APK puis ouvre directement l'écran d'installation Android.
+   5) Service au premier plan (LiveService) pendant le direct : Android ne gèle ni ne tue l'application. */
 public class MainActivity extends BridgeActivity {
     private WifiManager.WifiLock wifiLock;
 
@@ -152,6 +154,22 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
+        /* Direct en cours : démarre (true) ou arrête (false) le service au premier plan caméra + micro (voir LiveService).
+           Si Android refuse, rien ne change pour le direct. */
+        @JavascriptInterface
+        public void keepAlive(boolean on) {
+            try {
+                Intent i = new Intent(MainActivity.this, LiveService.class);
+                if (on) {
+                    if (Build.VERSION.SDK_INT >= 26) MainActivity.this.startForegroundService(i);
+                    else MainActivity.this.startService(i);
+                } else {
+                    MainActivity.this.stopService(i);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
         /* Signale un échec de mise à jour à la page (window.onTprUpdateFailed) */
         private void updateFailed(final String why) {
             runOnUiThread(new Runnable() {
@@ -238,6 +256,13 @@ public class MainActivity extends BridgeActivity {
         } catch (Throwable ignored) {
         }
         try {
+            /* Android 13+ : autorisation d'afficher la notification « Direct en cours ». Le service fonctionne même si elle est refusée. */
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7101);
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             int mode = Build.VERSION.SDK_INT >= 29
                     ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
@@ -253,6 +278,10 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         try {
             if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        } catch (Throwable ignored) {
+        }
+        try {
+            stopService(new Intent(this, LiveService.class));
         } catch (Throwable ignored) {
         }
         super.onDestroy();

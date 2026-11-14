@@ -2,8 +2,8 @@
 - `server/` : serveur Node + pages web (`phone.html`, `obs.html`, `control.html`)
 - `mobile/` : enveloppe Capacitor → APK (compilé par GitHub Actions)
 - `desktop/` : enveloppe Electron → installeur Windows (compilé par GitHub Actions)
-- `mobile/signing/` : clé de signature fixe de l'APK (nécessaire pour que les mises à jour s'installent par-dessus)
-- `mobile/patch/` : `MainActivity` qui garde le Wi-Fi en haute performance pendant le direct
+- `mobile/patch/` : code Android ajouté à l'APK : `MainActivity` (Wi-Fi en haute performance, recherche du PC, mise à jour) et `LiveService` (service « Direct en cours »)
+- Clé de signature de l'APK : **secret GitHub** `ANDROID_KEYSTORE_B64` (jamais dans le dépôt, voir « Signature de l'APK »)
 
 ## Obtenir les applications
 Onglet **Actions** du dépôt → dernier « Release » (APK et PC compilés ensemble). « Build Windows » ne se lance plus qu'à la main.
@@ -59,20 +59,23 @@ Onglet **Caméras PTZ** dans la fenêtre du PC : image en direct, rotation (haut
 - **Téléphone** : à l'ouverture et à chaque connexion au PC, il demande la version de l'APK au PC (aucun Internet nécessaire). Si elle est plus récente, un bouton « Nouvelle version disponible » apparaît : un appui télécharge l'APK et ouvre l'écran d'installation Android (un appui sur « Mettre à jour »). La première fois, Android demande d'autoriser l'installation depuis TPR Live.
 - Le dépôt GitHub doit être **public** (sinon le PC ne peut pas vérifier les mises à jour).
 
-## Clé de signature privée (recommandé)
-## Sécurité de la signature (obligatoire)
-La clé du dossier `mobile/signing/` est publique (le dépôt l'est) : n'importe qui pourrait signer un faux APK qui s'installerait par-dessus. **La compilation est donc refusée tant que le secret n'existe pas.** À faire une fois :
-1. Créer une clé privée : `keytool -genkey -v -keystore tpr.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=TPR Live"`
+## Signature de l'APK (obligatoire)
+L'APK est compilé en version **release** (non débogable) puis signé avec votre clé privée. Cette clé ne doit **jamais** être dans le dépôt (public) : sinon n'importe qui pourrait signer un faux APK qui s'installerait par-dessus. **La compilation est donc refusée tant que le secret n'existe pas.** À faire une fois :
+1. Créer une clé privée : `keytool -genkey -v -keystore tpr.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=TPR Live"` (l'alias et les mots de passe doivent rester exactement ceux-ci : le workflow les utilise).
 2. `base64 -w0 tpr.keystore` (sur Windows : `certutil -encode`), puis copier le résultat dans un **secret GitHub** nommé `ANDROID_KEYSTORE_B64` (Settings → Secrets and variables → Actions).
-3. Supprimer ensuite `mobile/signing/debug.keystore` du dépôt.
+3. Garder une **copie de sauvegarde** de `tpr.keystore` hors de GitHub : si la clé est perdue ou changée, il faut désinstaller l'ancien APK une seule fois avant d'installer le nouveau. Le dépôt ignore déjà les fichiers `*.keystore`.
 
-**Dépannage / transition** : pour compiler quand même avec l'ancienne clé publique (déconseillé), créer la *variable* GitHub (Settings → Secrets and variables → Actions → Variables) `ALLOW_PUBLIC_KEY` = `true`. Un avertissement apparaît à chaque compilation. Changer de clé oblige à désinstaller l'ancien APK une seule fois.
+Le passage de l'APK de débogage à l'APK release ne change pas la clé : les téléphones se mettent à jour par-dessus, sans désinstaller. La compilation vérifie l'APK (signature, « non débogable », service et permissions du direct) et s'arrête si un contrôle échoue.
+
+## Signature de l'installeur Windows (facultatif)
+Sans certificat de signature de code, Windows SmartScreen affiche un avertissement à l'installation (« Windows a protégé votre ordinateur »). Pour le supprimer : acheter un certificat de signature de code (fichier `.pfx`), puis créer deux secrets GitHub : `WIN_CSC_LINK` (le `.pfx` encodé en base64) et `WIN_CSC_KEY_PASSWORD` (son mot de passe). La compilation signe alors l'installeur seule ; sans ces secrets, elle continue d'afficher un avis et publie un installeur non signé. Un certificat ordinaire gagne la confiance de SmartScreen progressivement ; un certificat « EV » est reconnu tout de suite.
 
 ## Protections intégrées
 - **Tests avant chaque publication** : `release.yml` lance `npm test` (appairage, sécurité, WebRTC, caméras). Un test rouge empêche la publication.
 - **Pages malveillantes** : le WebSocket et l'API caméras refusent les requêtes venant d'un autre site, d'un nom de domaine (DNS rebinding) ou marquées « inter-sites » par le navigateur.
 - **Mise à jour de l'APK vérifiée** : le téléphone compare l'empreinte SHA-256 du fichier téléchargé à celle publiée avec la version (`apk-version.json` sur le PC, et sur GitHub quand le téléphone a Internet : si les deux diffèrent, la mise à jour est refusée). Sans empreinte valide, rien ne s'installe.
 - **Reprise automatique de la caméra** : si un appel téléphonique, une autre application ou une panne coupe la caméra ou le micro (ou si l'image se fige 8 secondes), le téléphone la rouvre tout seul et reprend le direct, sans toucher l'écran.
+- **Service « Direct en cours » (Android)** : dès que le direct démarre, le téléphone affiche la notification « Direct en cours » et Android ne gèle ni ne tue l'application si l'écran se verrouille ou si l'on change d'application. À partir d'Android 13, l'application demande l'autorisation d'afficher les notifications (au premier lancement) ; en cas de refus, le service fonctionne quand même, sans notification. Si Android refuse le service, le direct continue comme avant. À vérifier une fois sur votre téléphone (voir « Vérifications sur le terrain »).
 - **Alertes sur le téléphone** : « le téléphone chauffe » (Android 10+) et « batterie faible, branchez-le » apparaissent sur le téléphone et sur le PC avant que l'image ne se dégrade.
 - **Fermeture protégée (PC)** : fermer TPR Live pendant qu'un téléphone est en direct demande confirmation. Une seule copie du programme à la fois, et Windows ne se met plus en veille pendant que TPR Live tourne.
 - **Mises à jour hors direct (PC)** : la mise à jour ne se télécharge ni ne s'annonce tant qu'un téléphone est en direct.
@@ -80,11 +83,18 @@ La clé du dossier `mobile/signing/` est publique (le dépôt l'est) : n'importe
 - **Pare-feu (PC)** : au premier lancement, TPR Live propose d'autoriser les téléphones (Windows demande l'accord de l'administrateur une seule fois). À la main : `netsh advfirewall firewall add rule name=TPRLive dir=in action=allow protocol=TCP localport=3000 profile=any` dans une invite de commandes administrateur.
 - **Mots de passe des caméras IP chiffrés** sur le PC (liés à la session Windows).
 - **Serveur durci** : au plus 16 caméras simultanées, et un appareil qui inonde le serveur de messages est déconnecté.
-- **Tests** : `npm test` (appairage, sécurité, page téléphone, programme Windows, WebRTC, caméras). `npm run soak` simule une liaison vidéo avec coupures Wi-Fi ; pour un vrai culte : `SOAK_SECONDS=10800 npm run soak` (3 heures).
-- Limite connue : le code d'appairage et la vidéo circulent en clair sur le réseau local (pas de HTTPS). À utiliser sur un Wi-Fi de confiance.
+- **Tests** : `npm test` (appairage, sécurité, page téléphone, **page OBS**, **cohérence Android/workflow**, programme Windows, WebRTC, caméras IP). `MEDIAMTX=/chemin/mediamtx npm test` ajoute le test du **flux vidéo réel des caméras IP** (lancé automatiquement par GitHub). `npm run soak` simule une liaison vidéo avec coupures Wi-Fi ; pour un vrai culte : `SOAK_SECONDS=10800 npm run soak` (3 heures), ou l'onglet **Actions → Test de longue durée → Run workflow** sur GitHub.
 
-## Important : première installation après cette correction
-L'ancien APK était signé avec une clé différente à chaque compilation. **Désinstallez l'ancien APK une seule fois**, puis installez le nouveau. Les mises à jour suivantes s'installeront normalement par-dessus.
+## Vérifications sur le terrain (à faire une fois, ce qu'aucun test automatique ne peut remplacer)
+1. **Service « Direct en cours »** : démarrer un direct sur le téléphone, puis verrouiller l'écran 1 minute, ou passer sur une autre application ; revenir et regarder dans OBS si l'image n'a pas coupé. Vérifier aussi que la notification apparaît (Android 13 et plus : accepter la demande d'autorisation). Si l'image se fige quand l'application passe en arrière-plan, le service ne suffit pas : le dire, c'est une limite de la WebView à corriger autrement.
+2. **Mise à jour par-dessus** : installer le nouvel APK sur un téléphone qui a déjà l'ancien (sans désinstaller). Si Android refuse, la clé de signature a changé.
+3. **Un direct complet** avec le matériel réel (téléphone, Wi-Fi de l'église, OBS) avant un culte important.
+4. **Caméra PTZ** : tester le déplacement et l'image avec votre vraie caméra (les tests automatiques utilisent une caméra simulée).
+
+## Limites connues
+- Windows uniquement pour le PC (pas de Mac) ; Android uniquement pour le téléphone (pas d'iPhone).
+- Réseau local ou partage USB uniquement : aucun serveur externe n'est configuré, donc pas de direct par la 4G.
+- La vidéo et le code d'appairage circulent en clair sur le réseau local (pas de HTTPS) : Wi-Fi de confiance seulement.
 
 ## Dernières améliorations (fluidité, son, interface)
 

@@ -1,0 +1,27 @@
+name: Test de longue durée
+# Lancement manuel : simule une vraie liaison téléphone → PC → OBS avec une coupure Wi-Fi toutes les 10 s
+# et vérifie que l'image ne s'arrête jamais et que la mémoire ne grossit pas. 10800 s = 3 heures (un culte).
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Durée en secondes (10800 = 3 h)"
+        default: "1800"
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - name: Test de longue durée
+        working-directory: server
+        env:
+          SOAK_SECONDS: ${{ inputs.seconds }}
+        run: |
+          [[ "$SOAK_SECONDS" =~ ^[0-9]+$ ]] || { echo "::error::Durée invalide"; exit 1; }
+          npm run soak

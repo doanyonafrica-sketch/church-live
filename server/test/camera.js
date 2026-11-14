@@ -67,7 +67,7 @@ const api=(port,method,url,body)=>new Promise((res,rej)=>{const d=body?JSON.stri
   /* flux vidéo : nécessite un serveur RTSP de test (MEDIAMTX=chemin de l'exécutable) ; sinon cette partie est ignorée */
   if(process.env.MEDIAMTX){
     const cfg=path.join(dir,'mtx.yml');fs.writeFileSync(cfg,'rtspAddress: :'+RTSP_PORT+'\nrtmp: no\nhls: no\nwebrtc: no\nsrt: no\napi: no\nmetrics: no\npprof: no\nplayback: no\npaths:\n  all_others:\n');
-    const mtx=spawn(process.env.MEDIAMTX,[cfg],{stdio:'ignore'});
+    const mtx=spawn(process.env.MEDIAMTX,[cfg],{stdio:'ignore',cwd:dir});   /* cwd : MediaMTX y crée son certificat auto-signé, pas dans le dépôt */
     await wait(1000);
     const pushr=spawn('ffmpeg',['-loglevel','error','-re','-f','lavfi','-i','testsrc=size=640x360:rate=15','-c:v','libx264','-preset','ultrafast','-tune','zerolatency','-g','15','-f','rtsp','-rtsp_transport','tcp','rtsp://127.0.0.1:'+RTSP_PORT+'/sub'],{stdio:'ignore'});
     await wait(1500);

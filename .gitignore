@@ -5,3 +5,5 @@ desktop/server/
 desktop/dist/
 
 *.keystore
+server/auto.crt
+server/auto.key

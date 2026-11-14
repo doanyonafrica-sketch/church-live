@@ -416,13 +416,15 @@ setInterval(async()=>{
     rtt:rtt?Math.round(rtt*1000):null,limit:o.qualityLimitationReason||'none',loss:+(((rin&&rin.fractionLost)||0)*100).toFixed(1),level:d?(bad>=3?'bad':'warn'):hw?'warn':'ok',diag:d||hw,thermal:dev.thermal,sec:s,muted:muted,q:+$('q').value,
     rssi:dev.rssi,link:dev.link,battery:dev.battery,charging:dev.charging});
 },1000);
+/* Service Android au premier plan pendant le direct (l'application ne sera ni gelée ni tuée en arrière-plan). Absent des anciens APK : sans effet. */
+const keepAlive=on=>{try{window.TPRNative&&TPRNative.keepAlive&&TPRNative.keepAlive(on)}catch{}};
 $('go').onclick=async()=>{
-  if(running){running=false;clearTimeout(rt);clearInterval(mt);ws&&ws.close();pc&&pc.close();pc=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;wl&&wl.release();an=null;gn=null;outS=null;t0=last=null;bad=0;busy=0;peakH=0;lvl=0;netBad=0;ac&&ac.close();ac=null;document.body.classList.remove('nocam','ui');
+  if(running){keepAlive(false);running=false;clearTimeout(rt);clearInterval(mt);ws&&ws.close();pc&&pc.close();pc=null;stream&&stream.getTracks().forEach(t=>t.stop());stream=null;wl&&wl.release();an=null;gn=null;outS=null;t0=last=null;bad=0;busy=0;peakH=0;lvl=0;netBad=0;ac&&ac.close();ac=null;document.body.classList.remove('nocam','ui');
     document.body.classList.remove('live','run','cam','wait','onair');setAir(null);$('v').srcObject=null;$('go').style.setProperty('--lv',0);$('go').setAttribute('aria-label','Démarrer le direct');$('gol').textContent='Démarrer';pill('Hors ligne');alertBox('');msg('Direct terminé.');$('clock').textContent='00:00:00';
     $('c2').textContent=$('c3').textContent=$('c4').textContent=$('c5').textContent='';return}
   if(!$('addr').value.trim()){openSet();discover();return}
   if(!navigator.mediaDevices){msg('Caméra bloquée par le navigateur. Utilisez l\'application TPR Live (APK).');return}
-  try{try{await document.documentElement.requestFullscreen();await screen.orientation.lock('landscape')}catch{}await cam();running=true;document.body.classList.add('run');showUI();$('go').setAttribute('aria-label','Terminer le direct');$('gol').textContent='Terminer';pill('Connexion…','wait');msg('Connexion au PC…');
+  try{try{await document.documentElement.requestFullscreen();await screen.orientation.lock('landscape')}catch{}await cam();running=true;keepAlive(true);document.body.classList.add('run');showUI();$('go').setAttribute('aria-label','Terminer le direct');$('gol').textContent='Terminer';pill('Connexion…','wait');msg('Connexion au PC…');
     try{wl=await navigator.wakeLock.request('screen')}catch{}connect()}
   catch(e){msg('Caméra ou micro refusé. Autorisez-les dans les réglages du téléphone. ('+e.name+')')}
 };
