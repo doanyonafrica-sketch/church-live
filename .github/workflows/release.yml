@@ -133,10 +133,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signature de l'installeur Windows (facultative) : secrets WIN_CSC_LINK (certificat .pfx en base64) et WIN_CSC_KEY_PASSWORD
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Variables intermédiaires : electron-builder ne les lit pas, donc un secret absent (chaîne vide) ne casse plus le build.
+          SIGN_LINK: ${{ secrets.WIN_CSC_LINK }}
+          SIGN_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          if [ -z "$CSC_LINK" ]; then echo "::notice::Installeur Windows NON signé (secret WIN_CSC_LINK absent) : Windows SmartScreen affichera un avertissement."; fi
+          if [ -n "$SIGN_LINK" ]; then
+            export CSC_LINK="$SIGN_LINK"
+            export CSC_KEY_PASSWORD="$SIGN_PASSWORD"
+          else
+            echo "::notice::Installeur Windows NON signé (secret WIN_CSC_LINK absent) : Windows SmartScreen affichera un avertissement."
+            unset CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
           mkdir desktop/server && cp server/*.js desktop/server/ && cp -r server/public desktop/server/
           # le PC fournit l'APK au téléphone : la mise à jour du PC met aussi le téléphone à jour
           cp apk/church-live.apk desktop/server/public/church-live.apk
