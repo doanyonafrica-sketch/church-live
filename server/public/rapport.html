@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TPR Live - Rapport du direct</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<style>
+body{margin:0;font:16px/1.5 system-ui,"Segoe UI",Roboto,sans-serif;background:#0e2a2d;color:#e8f3f1;padding:20px}
+h1{font:600 24px/1.2 Georgia,serif;color:#e8c47a;margin:0 0 6px}
+p{margin:6px 0 14px;color:#b9dad6}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+button,a.b{font:600 15px system-ui;border:0;border-radius:8px;padding:10px 16px;background:#e8c47a;color:#1b2a2b;cursor:pointer;text-decoration:none}
+select,input{font:15px system-ui;padding:9px;border-radius:8px;border:0}
+pre{white-space:pre-wrap;word-break:break-word;background:#07191b;border:1px solid #1f4a4d;border-radius:10px;padding:14px;font:14px/1.5 ui-monospace,Consolas,monospace}
+</style>
+<h1>Rapport du direct</h1>
+<p>Résumé automatique de ce qui s'est passé (coupures, reprises, qualité du réseau). À copier ou à télécharger pour l'envoyer et améliorer l'application. Visible uniquement depuis le PC.</p>
+<div class="bar">
+  <select id="d"><option value="1">Aujourd'hui</option><option value="2">2 derniers jours</option><option value="7">7 derniers jours</option><option value="30">30 derniers jours</option></select>
+  <input type="date" id="dt" title="Un jour précis"><button id="r">Actualiser</button><button id="c">Copier le résumé</button><a class="b" id="dl" href="/api/journal/download?days=1">Télécharger le journal complet</a>
+</div>
+<pre id="t">Chargement…</pre>
+<script>
+const $=id=>document.getElementById(id);
+async function load(){
+  const days=$('d').value,date=$('dt').value,qs=date?'date='+date:'days='+days;$('dl').href='/api/journal/download?'+qs;
+  try{const r=await fetch('/api/journal/summary?'+qs,{cache:'no-store'}),j=await r.json();
+    $('t').textContent=j.ok?j.text:(j.error||'Erreur')}catch{$('t').textContent='Impossible de lire le journal (ouvrez cette page depuis le PC qui exécute TPR Live).'}
+}
+$('r').onclick=load;$('d').onchange=()=>{$('dt').value='';load()};$('dt').onchange=load;
+$('c').onclick=async()=>{try{await navigator.clipboard.writeText($('t').textContent);$('c').textContent='Copié ✓'}catch{$('c').textContent='Copie impossible : sélectionnez le texte'}setTimeout(()=>$('c').textContent='Copier le résumé',2000)};
+load();
+</script>

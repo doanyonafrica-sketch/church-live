@@ -5,6 +5,8 @@ Les numéros de version sont attribués automatiquement à chaque envoi sur `mai
 ## Non publié
 
 ### Ajouts
+- **Journal automatique du direct** : le PC enregistre tout seul, dans le dossier de données (`journal/journal-AAAA-MM-JJ.jsonl`, conservé 30 jours), les connexions, coupures, reprises, mesures réseau toutes les 10 s, et les événements envoyés par le téléphone (même ceux survenus hors connexion) et par la page OBS. Aucun code, image ni son. Page **`/rapport.html`** (PC uniquement) : résumé lisible, copie et téléchargement. Ligne de commande : `node server/tools/rapport.js [jours] [dossier]`. Désactivable avec `TPR_NO_JOURNAL=1`.
+- **Reconnexion fiable après une mauvaise connexion** : battement de cœur (ping) toutes les 3 s côté téléphone et côté OBS, nouvelle liaison si le PC ne répond plus pendant 9 s, reconnexion immédiate au retour du réseau, et OBS peut demander au téléphone de renégocier la vidéo quand l'image n'arrive plus.
 - **Service « Direct en cours » (Android)** : pendant le direct, notification permanente et service au premier plan caméra + micro, pour qu'Android ne gèle ni ne tue l'application (écran verrouillé, changement d'application). Ne gêne jamais le direct : si Android refuse, tout continue comme avant. Les anciens APK ne sont pas affectés.
 - **Test de la page OBS** (`server/test/obs.js`) : adresse et code envoyés au PC, reconnexions, « à l'antenne », écran d'attente, réglages `?delay=` et `?vol=`.
 - **Test de cohérence Android** (`server/test/android.js`) : chaque appel `TPRNative` de la page existe côté Android ; le service, ses permissions et le workflow restent alignés.

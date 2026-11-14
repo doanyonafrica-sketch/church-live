@@ -1,6 +1,7 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {WebSocketServer}=require('ws');
 const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
+const {createJournal,cleanClientLog,summarize}=require('./journal');
 const RELAY=new Set(['offer','answer','candidate']);
 const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','thermal','jitter','buf','dropped','lost'],
   STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
@@ -42,6 +43,10 @@ const cpuPct=()=>{const c=os.cpus().reduce((a,x)=>{for(const k in x.times)a.t+=x
 function createServer(opts={}){
   /* grace : délai avant d'annoncer un départ. Une coupure WebSocket brève (Wi-Fi) ne doit pas casser le flux vidéo. */
   const GRACE=opts.grace??4000;
+  /* Journal du direct : actif seulement si un dossier de données est fourni (application PC, ou lancement direct du serveur) */
+  const J=opts.dataDir&&opts.journal!==false&&process.env.TPR_NO_JOURNAL!=='1'?createJournal(opts.dataDir):null;
+  const jlog=(ev,d,t)=>{if(J)J.log(ev,d,t)};
+  jlog('server-start',{node:process.version});
   const PIN=opts.pin||null,fails=new Map();   /* échecs de code par adresse : au-delà de 10, blocage d'une minute */
   const app=express();
   /* Le téléphone (origine http://localhost dans l'APK) doit pouvoir lire la version de l'APK proposée par le PC */
@@ -73,18 +78,33 @@ function createServer(opts={}){
     if(!Object.keys(set).length)return r.status(400).json({ok:false,error:'Réglage invalide.'});
     if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
     if(!x.settings)return r.status(409).json({ok:false,error:'Ce téléphone doit être mis à jour pour être réglé depuis le PC.'});
-    send(x.publisher,{type:'set',set});r.json({ok:true,sent:set})});
+    send(x.publisher,{type:'set',set});jlog('remote-set',{room:String(q.params.room).slice(0,64),...set});r.json({ok:true,sent:set})});
   app.use('/api/phone',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
+  /* Journal : résumé et téléchargement, réservés au PC lui-même */
+  app.get('/api/journal/summary',(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    if(!J)return r.json({ok:true,text:'Le journal est désactivé.',files:0});
+    const days=Math.min(30,Math.max(1,parseInt(q.query.days,10)||1)),date=String(q.query.date||'');
+    r.set('Cache-Control','no-store');r.json({ok:true,files:J.files(days,date).length,text:summarize(J.read(days,date)).text})});
+  app.get('/api/journal/download',(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).send('Réservé au PC qui exécute TPR Live.');
+    if(!J)return r.status(404).send('Le journal est désactivé.');
+    const days=Math.min(30,Math.max(1,parseInt(q.query.days,10)||1)),date=String(q.query.date||'');
+    r.set({'Content-Type':'text/plain; charset=utf-8','Content-Disposition':'attachment; filename="tpr-live-journal.jsonl"','Cache-Control':'no-store'});
+    const fl=J.files(days,date);let i=0;const next=()=>{if(i>=fl.length)return r.end();const st=fs.createReadStream(fl[i++]);st.on('error',next);st.on('end',next);st.pipe(r,{end:false})};next()});
 
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
-  const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
-  hb.unref();const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
+  const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){jlog('dead',{room:w._room,role:w._role,ip:w._ip});w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
+  hb.unref();
+  const snapT=setInterval(()=>{if(!J)return;for(const [k,x] of rooms){const pub=live(x.publisher),view=live(x.viewer);if(!pub&&!view)continue;
+    const st=x.stats||{},vs=x.vstats||{};J.log('snap',{room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,rssi:st.rssi,link:st.link,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf})}},10000);snapT.unref();
+  const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{jlog('server-stop',{});clearInterval(snapT);clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
   /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
   /* Nombre de téléphones en direct : le PC s'en sert pour demander confirmation avant de quitter et pour ne pas se mettre à jour pendant un direct */
   srv.liveCount=()=>[...rooms.values()].filter(x=>live(x.publisher)).length;
   srv.shutdown=()=>{try{if(cams)cams.close()}catch{}for(const w of wss.clients){try{w.terminate()}catch{}}try{srv.close()}catch{}if(srv.closeAllConnections)try{srv.closeAllConnections()}catch{}};
   wss.on('connection',(ws,req)=>{
-    let room=null,role=null;ws.dead=false;ws._ip=req.socket.remoteAddress||'';
+    let room=null,role=null;ws.dead=false;ws._ip=req.socket.remoteAddress||'';const tConn=Date.now();
     ws.on('pong',()=>{ws.dead=false});
     ws.on('error',()=>{});
     let wStart=Date.now(),wCount=0;
@@ -100,19 +120,20 @@ function createServer(opts={}){
         const ip=ws._ip||'';
         if(PIN&&!isLocalAddr(ip)){
           const f=fails.get(ip)||{n:0,until:0};
-          if(Date.now()<f.until){ws.close(4003,'blocked');return}
-          if(String(m.code||'')!==PIN){if(++f.n>=10){f.until=Date.now()+60000;f.n=0}fails.set(ip,f);send(ws,{type:'denied'});ws.close(4003,'code');return}
+          if(Date.now()<f.until){jlog('denied',{room:nr,role:nrole,ip,why:'blocked'});ws.close(4003,'blocked');return}
+          if(String(m.code||'')!==PIN){if(++f.n>=10){f.until=Date.now()+60000;f.n=0}fails.set(ip,f);jlog('denied',{room:nr,role:nrole,ip,why:'code'});send(ws,{type:'denied'});ws.close(4003,'code');return}
           fails.delete(ip);
         }
         /* Place déjà prise par un autre appareil : on REFUSE le nouveau venu (4001) au lieu de couper celui qui est en ligne.
            Même appareil qui revient (même identifiant, ex. après une coupure Wi-Fi) : il reprend sa place (4000 pour l'ancienne connexion). */
         if(!rooms.has(nr)&&rooms.size>=16){ws.close(1013,'rooms');return}   /* au plus 16 caméras simultanées */
         const cur=rooms.get(nr);
-        if(cur&&live(cur[nrole])&&cur[nrole]!==ws&&!(cid&&cur[nrole].cid===cid)){send(ws,{type:'busy'});ws.close(4001,'busy');return}
-        room=nr;role=nrole;ws.cid=cid;
+        if(cur&&live(cur[nrole])&&cur[nrole]!==ws&&!(cid&&cur[nrole].cid===cid)){jlog('busy',{room:nr,role:nrole,ip});send(ws,{type:'busy'});ws.close(4001,'busy');return}
+        room=nr;role=nrole;ws.cid=cid;ws._room=room;ws._role=role;
         const r=rooms.get(room)||{t:{}};rooms.set(room,r);
         if(r.t[role]){clearTimeout(r.t[role]);delete r.t[role]}   /* retour rapide : on annule l'annonce de départ */
-        const old=r[role];r[role]=ws;if(old&&old!==ws)old.close(4000,'replaced');  /* 4000 : remplacé par le même appareil, ne pas se reconnecter */
+        const old=r[role];r[role]=ws;if(old&&old!==ws)old.close(4000,'replaced');
+        jlog('join',{room,role,ip,how:old&&old!==ws?'takeover':(r.t[role]===undefined&&r.seen&&r.seen[role]?'resume':'new'),id:cid.slice(0,6)});(r.seen||(r.seen={}))[role]=true;  /* 4000 : remplacé par le même appareil, ne pas se reconnecter */
         if(role==='viewer'){r.active=m.active===true;r.onair=m.onair===true;send(r.publisher,{type:'viewer-joined',keep:r.active});send(r.publisher,{type:'onair',value:r.onair})}
         else{if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});send(ws,{type:'onair',value:live(r.viewer)&&!!r.onair})}  /* le téléphone connaît tout de suite son statut */
         return;
@@ -121,22 +142,26 @@ function createServer(opts={}){
       if(m.type==='ping'){send(ws,{type:'pong'});return}
       const r=rooms.get(room);if(!r)return;
       /* OBS demande une nouvelle négociation (image absente alors que le téléphone se croit connecté) */
-      if(m.type==='need-offer'){if(role==='viewer')send(r.publisher,{type:'viewer-joined',keep:false});return}
+      if(m.type==='need-offer'){if(role==='viewer'){jlog('need-offer',{room,pub:live(r.publisher)});send(r.publisher,{type:'viewer-joined',keep:false})}return}
+      if(m.type==='log'){if(J)for(const x of cleanClientLog(m,Date.now())){const{t,ev,...d}=x;J.log('c:'+ev,{...d,room,role},t)}return}
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
       /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */
       if(m.type==='onair'){if(role==='viewer'){r.onair=m.value===true;send(r.publisher,{type:'onair',value:r.onair})}return}
-      if(m.type==='settings'){if(role==='publisher')r.settings=cleanRep(m);return}
+      if(m.type==='settings'){if(role==='publisher'){const n=cleanRep(m),sig=['q','prio','fluid','codec','mvol','muted'].map(k=>k+'='+n[k]).join(' ');
+        if(sig!==r.sig){r.sig=sig;jlog('settings',{room,q:n.q,prio:n.prio,fluid:n.fluid,codec:n.codec,mvol:n.mvol,muted:n.muted})}   /* changement de réglage du téléphone */
+        r.settings=n}return}
       if(m.type==='stats'){if(role==='publisher')r.stats=clean(m);return}
       if(m.type==='vstats'){if(role==='viewer')r.vstats=clean(m);return}
       if(!RELAY.has(m.type))return;
       send(role==='publisher'?r.viewer:r.publisher,m);
     });
-    ws.on('close',()=>{
+    ws.on('close',code=>{
+      if(room)jlog('close',{room,role,code,secs:Math.round((Date.now()-tConn)/1000)});
       const r=rooms.get(room);if(!r||r[role]!==ws)return;
       r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else{r.stats=null;r.settings=null}
       const other=role==='viewer'?'publisher':'viewer';
       r.t[role]=setTimeout(()=>{
-        delete r.t[role];
+        delete r.t[role];jlog('left',{room,role});
         send(r[other],{type:role==='viewer'?'viewer-left':'publisher-left'});
         if(!r.publisher&&!r.viewer&&!r.t.publisher&&!r.t.viewer)rooms.delete(room);
       },GRACE);
@@ -151,7 +176,7 @@ if(require.main===module){
   process.on('unhandledRejection',e=>console.error('Promesse rejetée (le serveur continue) :',e&&e.stack||e));
   const port=process.env.PORT||3000;
   const pin=loadPin();
-  createServer({pin}).listen(port,'0.0.0.0',()=>{
+  createServer({pin,dataDir:process.env.TPR_DATA||path.join(os.homedir(),'.tpr-live')}).listen(port,'0.0.0.0',()=>{
     console.log('\n=== Church Live : serveur prêt ===');
     console.log('Source OBS (Source Navigateur) : http://localhost:'+port+'/obs.html');
     console.log('Test avec la caméra du PC      : http://localhost:'+port+'/camera.html');

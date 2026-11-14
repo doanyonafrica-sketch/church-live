@@ -240,7 +240,7 @@ async function lowLight(vt,c){
 /* Reprise automatique : appel téléphonique, autre application qui prend la caméra ou le micro, image figée… On rouvre la caméra et on
    remplace les pistes dans la connexion en cours, sans couper le direct. En cas d'échec, on réessaie (3 s, 6 s… puis toutes les 15 s). */
 let recT=0,recBusy=false,recTries=0,zeroFps=0;
-function scheduleRecover(ms){if(!running)return;clearTimeout(recT);recT=setTimeout(recoverCam,ms)}
+function scheduleRecover(ms){if(!running)return;plog('cam-recover');clearTimeout(recT);recT=setTimeout(recoverCam,ms)}
 async function recoverCam(){
   if(!running||recBusy)return;recBusy=true;
   try{
@@ -293,8 +293,8 @@ function connect(){
   if(!running)return;
   const w=ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   let ok=false;
-  w.onopen=()=>{ok=true;fails=0;lastRx=Date.now();setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
-  w.onclose=e=>{if(w!==ws)return;if(running)setAir(null);
+  w.onopen=()=>{ok=true;fails=0;lastRx=Date.now();setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});plog('ws-open',{fails:fails});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  w.onclose=e=>{if(w!==ws)return;if(running){setAir(null);plog('ws-close',{code:e.code})}
     if(e.code===4003&&running){$('go').click();msg('Code d\'appairage manquant ou incorrect. Saisissez celui de la fenêtre TPR Live (Réglages).');alertBox('Code d\'appairage incorrect.');openSet();return}
     /* caméra déjà prise par un AUTRE téléphone : on n'écrase pas son direct, on attend un peu puis on abandonne */
     if(e.code===4001&&running){if(++busy>8){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}
@@ -303,13 +303,21 @@ function connect(){
   w.onmessage=async e=>{lastRx=Date.now();let m;try{m=JSON.parse(e.data)}catch{return}
     try{await onMsg(m)}catch{
       /* négociation vidéo en échec : on le dit et on recommence, au lieu de rester « connecté » sans image */
-      msg('Erreur de connexion vidéo : nouvelle tentative…');
+      plog('offer-error');msg('Erreur de connexion vidéo : nouvelle tentative…');
       setTimeout(()=>{if(running&&(!pc||pc.connectionState!=='connected'))offer().catch(()=>{})},2000)}};
 }
 /* Surveillance de la liaison : toutes les 3 s un ping ; sans aucune réponse du PC pendant 9 s, la liaison est considérée morte
    (Wi-Fi coupé sans fermeture propre) : on en ouvre une neuve tout de suite au lieu d'attendre des minutes. */
+/* Journal : les événements sont gardés dans le téléphone (même hors connexion) puis envoyés au PC dès que la liaison revient */
+const LB=[];
+function plog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift();flushLog()}
+function flushLog(){if(!ws||ws.readyState!==1||!LB.length)return;const now=Date.now();
+  sj({type:'log',items:LB.splice(0,50).map(x=>({ev:x.ev,d:x.d,ago:now-x.ts}))})}
+document.addEventListener('visibilitychange',()=>{if(running)plog(document.hidden?'app-hidden':'app-visible')});
+window.addEventListener('offline',()=>{if(running)plog('net-offline')});
 let lastRx=Date.now();
-function reviveWs(){
+function reviveWs(why){
+  plog('ws-revive',{why:why||''});
   if(!running)return;
   const old=ws;lastRx=Date.now();
   try{old&&old.close()}catch{}
@@ -318,11 +326,11 @@ function reviveWs(){
 setInterval(()=>{
   if(!running)return;
   if(ws&&ws.readyState===1){
-    if(Date.now()-lastRx>9000){pill('Reconnexion…','wait');msg('Liaison avec le PC perdue. Reconnexion…');reviveWs();return}
-    sj({type:'ping'});
-  }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000)reviveWs();   /* tentative de connexion bloquée */
+    if(Date.now()-lastRx>9000){pill('Reconnexion…','wait');msg('Liaison avec le PC perdue. Reconnexion…');reviveWs('silence');return}
+    sj({type:'ping'});flushLog();
+  }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000)reviveWs('bloque');   /* tentative de connexion bloquée */
 },3000);
-window.addEventListener('online',()=>{if(running)setTimeout(reviveWs,300)});
+window.addEventListener('online',()=>{if(running){plog('net-online');setTimeout(()=>reviveWs('online'),300)}});
 async function onMsg(m){
   if(m.type==='pong')return;
   if(m.type==='busy'||m.type==='denied')return;busy=0;
@@ -331,7 +339,7 @@ async function onMsg(m){
   else if(m.type==='candidate'&&pc)pc.addIceCandidate(m.candidate).catch(()=>{});
   else if(m.type==='onair')setAir(m.value)
   else if(m.type==='set')applySet(m.set).catch(()=>{})
-  else if(m.type==='viewer-left'){if(pc)pc.close();document.body.classList.remove('live');setAir(false);pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}
+  else if(m.type==='viewer-left'){plog('obs-left');if(pc)pc.close();document.body.classList.remove('live');setAir(false);pill('En attente d\'OBS','wait');msg('OBS s\'est déconnecté.')}
 }
 /* Évite que l'estimation de débit de Chrome ne démarre bas et ne fasse chuter la qualité : on impose un départ élevé et un plancher
    (paramètres lus par l'encodeur dans la réponse d'OBS). En cas de doute, la description d'origine est conservée. */
@@ -361,9 +369,10 @@ function hwWarn(v){
   return '';
 }
 async function offer(){
+  plog('offer');
   if(pc)pc.close();pc=new RTCPeerConnection({iceServers:[]});
   pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
-  pc.onconnectionstatechange=()=>{const s=pc.connectionState;
+  pc.onconnectionstatechange=()=>{const s=pc.connectionState;plog('pc-'+s);
     if(s==='connected'){document.body.classList.add('live');livePill();msg('');t0=t0||Date.now()}
     else if(s==='failed'||s==='disconnected'){document.body.classList.remove('live');pill('Reconnexion…','wait');clearTimeout(rt);
       rt=setTimeout(()=>{if(running&&pc&&pc.connectionState!=='connected')offer()},s==='failed'?1000:8000)}};
@@ -389,7 +398,7 @@ function diagnose(fps,lim,loss,h){
 /* Qualité adaptative : si le réseau ou le processeur du téléphone n'arrive pas à suivre, on baisse la résolution et le débit AVANT que l'image ne rame ; on remonte tout seul quand ça va mieux. */
 const LV=[{f:1,b:1},{f:1.33,b:.75},{f:1.5,b:.6}];   /* jamais en dessous de ~480p : une image floue est pire qu'une image un peu moins fluide */
 async function setLevel(n){
-  if(!pc)return;lvl=n;
+  if(!pc)return;lvl=n;plog('level',{n:n});
   const sd=pc.getSenders().find(x=>x.track&&x.track.kind==='video');if(!sd)return;
   const p=sd.getParameters();if(!p.encodings||!p.encodings.length)return;
   p.encodings[0].maxBitrate=BR[$('q').value]*LV[n].b;p.encodings[0].scaleResolutionDownBy=LV[n].f;

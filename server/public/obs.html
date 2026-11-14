@@ -39,6 +39,11 @@ v.volume=VOL;
 const MYID=Math.random().toString(36).slice(2)+Date.now().toString(36);   /* identifie cette page : un rechargement n'est pas un « autre appareil » */
 const note=t=>{msg.textContent=t;msg.style.display=t?'block':'none'};
 let ws,pc,q=Promise.resolve(),prev;
+/* Journal : événements envoyés au PC (journal du direct) */
+const LB=[];
+function olog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift();flushLog()}
+function flushLog(){if(!ws||ws.readyState!==1||!LB.length)return;const now=Date.now();
+  sj({type:'log',items:LB.splice(0,50).map(x=>({ev:x.ev,d:x.d,ago:now-x.ts}))})}
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const isLive=()=>!!pc&&pc.connectionState==='connected';
 /* « À l'antenne » = la source est visible dans le PROGRAMME d'OBS (pas seulement dans l'aperçu) et l'image est reçue.
@@ -64,7 +69,7 @@ const pad=n=>String(n).padStart(2,'0');
 function render(){
   const st=wstate();
   if(st!==wmode){
-    wmode=st;since=Date.now();
+    wmode=st;since=Date.now();olog('screen-'+(st||'live'));
     if(st){clearTimeout(hideT);w.classList.remove('hide');wv.play().catch(()=>{})}
     else{w.classList.add('hide');clearTimeout(hideT);hideT=setTimeout(()=>wv.pause(),500)}   /* on arrête la vidéo d'attente une fois l'image de la caméra visible */
   }
@@ -81,20 +86,21 @@ async function handle(m){
     if(pc)pc.close();
     resetFlow();
     pc=new RTCPeerConnection({iceServers:[]});
-    pc.onconnectionstatechange=()=>{act();render()};
+    pc.onconnectionstatechange=()=>{olog('pc-'+pc.connectionState);act();render()};
     pc.ontrack=e=>{try{e.receiver.jitterBufferTarget=DELAY}catch{}try{e.receiver.playoutDelayHint=DELAY/1000}catch{}if(v.srcObject!==e.streams[0])v.srcObject=e.streams[0]};
     pc.onicecandidate=e=>e.candidate&&sj({type:'candidate',candidate:e.candidate});
     await pc.setRemoteDescription({type:'offer',sdp:m.sdp});
     const a=await pc.createAnswer();await pc.setLocalDescription(a);sj({type:'answer',sdp:a.sdp});
     render();
   }else if(m.type==='candidate'&&pc){pc.addIceCandidate(m.candidate).catch(()=>{});}
-  else if(m.type==='publisher-left'){if(pc)pc.close();pc=null;v.srcObject=null;resetFlow();act();render()}
+  else if(m.type==='publisher-left'){olog('phone-left');if(pc)pc.close();pc=null;v.srcObject=null;resetFlow();act();render()}
 }
 function connect(){
   const w=ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  w.onopen=()=>{note('');sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir(),id:MYID,code:CODE})};
+  w.onopen=()=>{note('');sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir(),id:MYID,code:CODE});olog('ws-open')};
   w.onclose=e=>{
     if(w!==ws)return;                       /* ancienne connexion : la nouvelle est déjà en place */
+    olog('ws-close',{code:e.code});
     if(e.code===4000)return;                /* remplacée par cette même page : ne pas se reconnecter */
     if(e.code===4001){note('TPR Live : cette caméra est déjà reçue par une autre source OBS ou un autre onglet. Fermez l\'autre.');return setTimeout(connect,3000)}   /* le nouveau venu attend, il ne chasse personne */
     if(e.code===4003){note('TPR Live : code d\'appairage manquant ou incorrect (adresse ?code=… dans la fenêtre TPR Live).');return setTimeout(connect,10000)}
@@ -108,10 +114,10 @@ connect();
 setInterval(()=>{
   if(ws&&ws.readyState===1){
     if(Date.now()-lastRx>9000){lastRx=Date.now();const o=ws;try{o.close()}catch{}connect();return}
-    sj({type:'ping'});
+    sj({type:'ping'});flushLog();
     const bad=!isLive()||!flowing;
     if(bad){if(!stuckSince)stuckSince=Date.now();
-      if(Date.now()-stuckSince>6000&&Date.now()-lastAsk>8000){lastAsk=Date.now();sj({type:'need-offer'})}}
+      if(Date.now()-stuckSince>6000&&Date.now()-lastAsk>8000){lastAsk=Date.now();olog('need-offer');sj({type:'need-offer'})}}
     else stuckSince=0;
   }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000){lastRx=Date.now();try{ws.close()}catch{}connect()}
 },3000);
