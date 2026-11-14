@@ -293,20 +293,38 @@ function connect(){
   if(!running)return;
   const w=ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   let ok=false;
-  w.onopen=()=>{ok=true;fails=0;setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  w.onopen=()=>{ok=true;fails=0;lastRx=Date.now();setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
   w.onclose=e=>{if(w!==ws)return;if(running)setAir(null);
     if(e.code===4003&&running){$('go').click();msg('Code d\'appairage manquant ou incorrect. Saisissez celui de la fenêtre TPR Live (Réglages).');alertBox('Code d\'appairage incorrect.');openSet();return}
     /* caméra déjà prise par un AUTRE téléphone : on n'écrase pas son direct, on attend un peu puis on abandonne */
     if(e.code===4001&&running){if(++busy>8){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}
       pill('Caméra occupée…','wait');msg('Cette caméra est déjà utilisée par un autre téléphone. Nouvelle tentative…');setTimeout(connect,3000);return}
     if(e.code===4000&&running){$('go').click();msg('Cette caméra est déjà utilisée par un autre téléphone. Choisissez un autre numéro dans les Réglages.');alertBox('Caméra '+$('cam').value+' déjà utilisée par un autre téléphone.');return}if(running){if(!ok&&++fails%3===0)discover();if(!pc||pc.connectionState!=='connected'){pill('Reconnexion…','wait');msg('Connexion au PC perdue. Nouvelle tentative…')}setTimeout(connect,1000)}};
-  w.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+  w.onmessage=async e=>{lastRx=Date.now();let m;try{m=JSON.parse(e.data)}catch{return}
     try{await onMsg(m)}catch{
       /* négociation vidéo en échec : on le dit et on recommence, au lieu de rester « connecté » sans image */
       msg('Erreur de connexion vidéo : nouvelle tentative…');
       setTimeout(()=>{if(running&&(!pc||pc.connectionState!=='connected'))offer().catch(()=>{})},2000)}};
 }
+/* Surveillance de la liaison : toutes les 3 s un ping ; sans aucune réponse du PC pendant 9 s, la liaison est considérée morte
+   (Wi-Fi coupé sans fermeture propre) : on en ouvre une neuve tout de suite au lieu d'attendre des minutes. */
+let lastRx=Date.now();
+function reviveWs(){
+  if(!running)return;
+  const old=ws;lastRx=Date.now();
+  try{old&&old.close()}catch{}
+  connect();   /* connect() remplace ws : l'ancien onclose est ignoré (w!==ws) et le serveur me reconnaît par mon identifiant */
+}
+setInterval(()=>{
+  if(!running)return;
+  if(ws&&ws.readyState===1){
+    if(Date.now()-lastRx>9000){pill('Reconnexion…','wait');msg('Liaison avec le PC perdue. Reconnexion…');reviveWs();return}
+    sj({type:'ping'});
+  }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000)reviveWs();   /* tentative de connexion bloquée */
+},3000);
+window.addEventListener('online',()=>{if(running)setTimeout(reviveWs,300)});
 async function onMsg(m){
+  if(m.type==='pong')return;
   if(m.type==='busy'||m.type==='denied')return;busy=0;
   if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
   else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:tune(m.sdp)});

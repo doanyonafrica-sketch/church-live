@@ -117,7 +117,11 @@ function createServer(opts={}){
         else{if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});send(ws,{type:'onair',value:live(r.viewer)&&!!r.onair})}  /* le téléphone connaît tout de suite son statut */
         return;
       }
+      /* Battement de coeur applicatif : le client sait ainsi que la liaison vit (un Wi-Fi coupé sans fermeture propre ne se voit pas autrement) */
+      if(m.type==='ping'){send(ws,{type:'pong'});return}
       const r=rooms.get(room);if(!r)return;
+      /* OBS demande une nouvelle négociation (image absente alors que le téléphone se croit connecté) */
+      if(m.type==='need-offer'){if(role==='viewer')send(r.publisher,{type:'viewer-joined',keep:false});return}
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
       /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */
       if(m.type==='onair'){if(role==='viewer'){r.onair=m.value===true;send(r.publisher,{type:'onair',value:r.onair})}return}
