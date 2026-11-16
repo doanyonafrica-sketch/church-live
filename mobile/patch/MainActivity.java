@@ -60,6 +60,8 @@ public class MainActivity extends BridgeActivity {
                     if (rssi > -127 && rssi < 0) o.put("rssi", rssi);
                     int ls = wi.getLinkSpeed();
                     if (ls > 0) o.put("link", ls);
+                    int fq = wi.getFrequency();   /* en MHz : 2412 à 2484 = bande 2,4 GHz, 5170 et plus = bande 5 GHz */
+                    if (fq > 0) o.put("freq", fq);
                 }
             } catch (Throwable ignored) {
             }

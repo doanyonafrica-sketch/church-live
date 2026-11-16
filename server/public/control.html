@@ -142,6 +142,18 @@ dialog{border-color:rgba(232,196,122,.28);background:linear-gradient(#0c333a,#07
 
 /* ===== Vue simple des caméras + réglages des téléphones ===== */
 .sechead{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}.sechead h2{margin:0;flex:1}
+#batalert{margin:0 0 16px;padding:14px 18px;border-radius:14px;border:1px solid var(--warn);background:rgba(242,194,96,.12);font:600 18px var(--serif)}
+#batalert.bad{border-color:var(--live);background:rgba(255,90,78,.16)}
+#batalert[hidden]{display:none}
+#batalert small{display:block;font:400 14px/1.4 system-ui,sans-serif;margin-top:4px}
+.tbox{margin-top:12px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03)}
+.tbox small{display:block;color:var(--mute);margin:4px 0 8px;font-size:13px;line-height:1.4}
+.tbox ul{margin:6px 0 8px 18px;padding:0;font-size:14px;line-height:1.5}
+.tbox li.fail{color:var(--live)}.tbox li.warn{color:var(--warn)}.tbox li.ok{color:var(--ok)}
+.tbox .adv{margin:8px 0;font-size:14px}.tbox .adv ul{color:var(--text)}
+.tbar{height:8px;border-radius:99px;background:rgba(255,255,255,.12);margin:8px 0}.tbar i{display:block;height:100%;border-radius:99px;background:var(--ok);transition:width .8s}
+.tv.ok{border-color:var(--ok)}.tv.cond{border-color:var(--warn)}.tv.non{border-color:var(--live)}
+.tv .tt{display:block;font:600 20px var(--serif);margin-bottom:2px}
 .verd{display:flex;gap:14px;align-items:center;margin:2px 0 16px}
 .verd i{width:16px;height:16px;border-radius:50%;flex:none;background:var(--mute)}
 .verd.ok i{background:var(--ok);box-shadow:0 0 0 6px rgba(111,220,154,.18)}
@@ -164,6 +176,7 @@ select:focus-visible,input[type=range]:focus-visible{outline:2px solid var(--war
 <nav class="tabs" role="tablist"><button role="tab" id="t-live" data-tab="live" aria-selected="true">Direct</button><button role="tab" id="t-cam" data-tab="cam" aria-selected="false">Caméras PTZ</button></nav>
 <div id="live">
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
+<div id="batalert" hidden role="alert"></div>
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
 <div class="sec" id="camsec" hidden><div class="sechead"><h2>État des caméras</h2><button class="btn sec2" id="det" aria-pressed="false">Détails techniques</button></div><div id="cams"></div></div>
 
@@ -251,6 +264,24 @@ function verdict(x,st,vs){
   if(st.level==='warn')return{lv:'warn',t:'À surveiller',d:(st.diag||'Surveillez cette caméra.')+tail};
   if(vs&&(vs.dropped>0||vs.lost>0))return{lv:'warn',t:'À surveiller',d:'OBS perd quelques images. Si l\'image saccade, rapprochez le téléphone du routeur ou utilisez le câble USB.'+tail};
   return{lv:'ok',t:'Tout va bien',d:(x.viewer?'L\'image arrive correctement dans OBS.':'Le téléphone est prêt.')+tail}}
+/* Téléphones sous 30 % de batterie et non branchés : texte de l'alerte du haut de la fenêtre (rouge sous 15 %) */
+function lowBat(rs){
+  const L=rs.map(x=>({x,st:x.stats&&x.stats.age<5000?x.stats:null})).filter(o=>o.st&&o.st.battery!=null&&o.st.battery<30&&!o.st.charging);
+  if(!L.length)return null;
+  return{cls:Math.min(...L.map(o=>o.st.battery))<15?'bad':'',
+    html:'<div>Batterie faible : '+L.map(o=>'Caméra '+(o.x.room==='main'?1:String(o.x.room).replace(/^cam/,'').replace(/[^0-9a-z]/gi,''))+' ('+o.st.battery+' %)').join(', ')+'<small>Branchez le téléphone maintenant : en direct, il peut perdre près de 40 % de batterie par heure.</small></div>'}}
+/* Test d'aptitude d'un téléphone : bouton, progression, puis verdict avec les raisons et les conseils */
+function testHtml(t,x){
+  const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const room=E(x&&x.room),btn=(act,label,cls,min)=>'<button class="btn '+(cls||'')+'" data-test="'+act+'" data-room="'+room+'"'+(min?' data-min="'+min+'"':'')+'>'+label+'</button>';
+  if(t&&t.running){const e=Math.round(t.elapsed/1000),d=Math.round(t.dur/1000),mm=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+    return '<div class="tbox"><b>Test d’aptitude en cours : '+mm(e)+' / '+mm(d)+'</b><div class="tbar"><i style="width:'+Math.min(100,Math.round(e/d*100))+'%"></i></div><small>Ne touchez pas au téléphone et laissez-le diffuser. '+(t.drops?t.drops+' coupure(s) déjà notée(s).':'')+'</small>'+btn('stop','Arrêter le test','sec2')+'</div>'}
+  if(t&&t.result){const r=t.result,cls={apte:'ok',conditions:'cond',non:'non',insuffisant:'insuf'}[r.verdict]||'insuf',ic={ok:'✓',warn:'⚠',fail:'✗'};
+    return '<div class="tbox tv '+cls+'"><b class="tt">'+E(r.title)+'</b>'+(r.scope?'<small>'+E(r.scope)+'</small>':'')+(r.device?'<small>'+E(r.device)+'</small>':'')
+      +'<ul>'+(r.checks||[]).map(c=>'<li class="'+E(c.status)+'">'+(ic[c.status]||'')+' <b>'+E(c.name)+'</b> : '+E(c.detail)+'</li>').join('')+'</ul>'
+      +((r.advice||[]).length?'<div class="adv"><b>À faire :</b><ul>'+r.advice.map(a=>'<li>'+E(a)+'</li>').join('')+'</ul></div>':'')+btn('start','Refaire (5 min)','sec2',5)+' '+btn('start','Refaire (10 min)','sec2',10)+'</div>'}
+  if(x&&x.publisher)return '<div class="tbox"><b>Ce téléphone convient-il au direct ?</b><small>Un test de 5 minutes mesure la fluidité, la latence, les coupures, la chauffe et la batterie, avec les réglages actuels du téléphone. Le test de 10 minutes estime mieux la consommation de batterie. Pour comparer plusieurs téléphones, utilisez les mêmes réglages (720p, netteté, H.264).</small>'+btn('start','Test rapide (5 min)','',5)+' '+btn('start','Test complet (10 min)','sec2',10)+'</div>';
+  return ''}
 function statHtml(x,st,vs){
   const n=x.room==='main'?1:String(x.room).replace('cam',''),v=verdict(x,st,vs);
   let h='<h3>Caméra '+esc(n)+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+'</h3>'
@@ -327,17 +358,21 @@ $('cams').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!
   push(room,{[k]:!(p?p.v:S[k])})});
 function cams(list){
   const rs=(list||[]).filter(x=>x.publisher||(x.stats&&x.stats.age<5000)).sort((a,b)=>a.room<b.room?-1:1);
+  /* Alerte batterie : visible en haut de la fenêtre, pour ne pas dépendre d'un coup d'œil dans la carte de chaque caméra */
+  const lb=lowBat(rs),ba=$('batalert');
+  if(ba){if(lb){ba.className=lb.cls;ba.innerHTML=lb.html;ba.hidden=false}else ba.hidden=true}
   $('camsec').hidden=!rs.length;
   const keep=new Set(rs.map(x=>x.room));
   for(const[room,el]of CARDS)if(!keep.has(room)){el.remove();CARDS.delete(room);delete LAST[room]}
   const box=$('cams');
   rs.forEach((x,i)=>{
     let el=CARDS.get(x.room);
-    if(!el){el=document.createElement('div');el.className='cam';el.dataset.room=x.room;el.innerHTML='<div class="stat"></div>'+RS_HTML;CARDS.set(x.room,el)}
+    if(!el){el=document.createElement('div');el.className='cam';el.dataset.room=x.room;el.innerHTML='<div class="stat"></div><div class="tst"></div>'+RS_HTML;CARDS.set(x.room,el)}
     if(box.children[i]!==el)box.insertBefore(el,box.children[i]||null);
     LAST[x.room]=x;
     const st=x.stats&&x.stats.age<5000?x.stats:null,vs=x.vstats&&x.vstats.age<5000?x.vstats:null;
     el.querySelector('.stat').innerHTML=statHtml(x,st,vs);
+    const th=testHtml(x.test,x);if(el._th!==th){el._th=th;el.querySelector('.tst').innerHTML=th}   /* ne réécrit la zone du test que si elle change */
     updSettings(x.room,el,x)})}
 async function r(){let i;try{i=await (await fetch('/info')).json()}catch{return}
 cams(i.rooms);$('ct').textContent=(i.cpu!=null?i.cpu+' %':'—');$('ct').className=i.cpu>85?'bad2':i.cpu>65?'warn2':'';
@@ -352,6 +387,11 @@ $('o').classList.toggle('on',!!i.viewers);$('ot').textContent=i.viewers?'Connect
 const b=$('banner'),ok=i.publishers&&i.viewers;b.className=ok?'ready':'wait';
 $('bt').textContent=ok?'Tout est prêt':i.publishers?'Téléphone connecté, OBS en attente':i.viewers?'OBS connecté, téléphone en attente':'En attente du téléphone et d\'OBS';
 $('bs').textContent=ok?'OBS reçoit l\'image du téléphone.':i.publishers?'Ajoutez la Source Navigateur dans OBS (adresse plus bas).':i.viewers?'Saisissez l\'adresse du PC dans l\'application du téléphone.':'Le serveur est en marche.'}
+/* Boutons du test d'aptitude (démarrer / arrêter) */
+document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-test]');if(!b)return;
+  b.disabled=true;
+  try{const j=await (await fetch('/api/test/'+encodeURIComponent(b.dataset.room)+'/'+b.dataset.test,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b.dataset.min?{minutes:+b.dataset.min}:{})})).json();
+    if(!j.ok){b.textContent=j.error||'Erreur';return}}catch{b.textContent='Erreur de communication'}});
 r();setInterval(r,1000);
 </script>
 <script src="/ptz.js"></script>

@@ -91,6 +91,10 @@ Sans certificat de signature de code, Windows SmartScreen affiche un avertisseme
 3. **Un direct complet** avec le matériel réel (téléphone, Wi-Fi de l'église, OBS) avant un culte important.
 4. **Caméra PTZ** : tester le déplacement et l'image avec votre vraie caméra (les tests automatiques utilisent une caméra simulée).
 
+## Tester un téléphone avant le culte
+
+Dans la fenêtre du PC, sur la carte d'une caméra dont le téléphone est connecté, touchez **Test rapide (5 min)** ou **Test complet (10 min)** (le test complet estime mieux la consommation de batterie). Laissez le téléphone diffuser sans y toucher. À la fin, un verdict s'affiche : **apte**, **apte sous conditions** (par exemple : à brancher sur secteur) ou **non apte**, avec les raisons et ce qu'il faut faire. Le test utilise les réglages actuels du téléphone ; pour comparer plusieurs téléphones, utilisez les mêmes (720p, netteté, H.264), un à la fois, au même endroit. Le verdict est noté dans le journal.
+
 ## Journal du direct et rapport
 
 Pendant chaque direct, le PC tient un journal (connexions, coupures, reprises, mesures réseau). Après le culte, ouvrez **http://localhost:3000/rapport.html** sur le PC : le résumé s'affiche, avec un bouton pour le copier et un autre pour télécharger le journal complet. Envoyez-les pour améliorer l'application. Les fichiers sont dans le dossier de données du PC (`%APPDATA%\TPR Live\journal` pour l'application Windows, `~/.tpr-live/journal` sinon). Rien ne quitte le PC tant que vous ne l'envoyez pas vous-même. `TPR_NO_JOURNAL=1` désactive le journal.

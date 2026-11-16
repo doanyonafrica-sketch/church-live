@@ -293,7 +293,8 @@ function connect(){
   if(!running)return;
   const w=ws=new WebSocket('ws://'+$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'/ws');
   let ok=false;
-  w.onopen=()=>{ok=true;fails=0;lastRx=Date.now();setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});plog('ws-open',{fails:fails});reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
+  w.onopen=()=>{ok=true;fails=0;lastRx=Date.now();setAir(null);checkUpdate();sj({type:'join',role:'publisher',room:ROOM(),id:TID,code:$('code').value.trim()});plog('ws-open',{fails:fails});
+    if(!devSent){devSent=true;plog('device',{ua:String(navigator.userAgent||'').slice(0,120),cores:navigator.hardwareConcurrency||0,ram:navigator.deviceMemory||0})}   /* modèle du téléphone, pour comprendre les différences entre appareils */reportSet();pill('En attente d\'OBS','wait');msg('Connecté au PC. Ouvrez la source dans OBS.')};
   w.onclose=e=>{if(w!==ws)return;if(running){setAir(null);plog('ws-close',{code:e.code})}
     if(e.code===4003&&running){$('go').click();msg('Code d\'appairage manquant ou incorrect. Saisissez celui de la fenêtre TPR Live (Réglages).');alertBox('Code d\'appairage incorrect.');openSet();return}
     /* caméra déjà prise par un AUTRE téléphone : on n'écrase pas son direct, on attend un peu puis on abandonne */
@@ -309,13 +310,13 @@ function connect(){
 /* Surveillance de la liaison : toutes les 3 s un ping ; sans aucune réponse du PC pendant 9 s, la liaison est considérée morte
    (Wi-Fi coupé sans fermeture propre) : on en ouvre une neuve tout de suite au lieu d'attendre des minutes. */
 /* Journal : les événements sont gardés dans le téléphone (même hors connexion) puis envoyés au PC dès que la liaison revient */
-const LB=[];
+const LB=[];let devSent=false;
 function plog(ev,d){LB.push({ev,d,ts:Date.now()});if(LB.length>200)LB.shift()}   /* mis en attente seulement : l'envoi se fait par la minuterie de 3 s, jamais au milieu d'une négociation vidéo */
 function flushLog(){if(!ws||ws.readyState!==1||!LB.length)return;const now=Date.now();
   sj({type:'log',items:LB.splice(0,50).map(x=>({ev:x.ev,d:x.d,ago:now-x.ts}))})}
 document.addEventListener('visibilitychange',()=>{if(running)plog(document.hidden?'app-hidden':'app-visible')});
 window.addEventListener('offline',()=>{if(running)plog('net-offline')});
-let lastRx=Date.now();
+let lastRx=Date.now(),lastTick=Date.now();
 function reviveWs(why){
   plog('ws-revive',{why:why||''});
   if(!running)return;
@@ -325,6 +326,7 @@ function reviveWs(why){
 }
 setInterval(()=>{
   if(!running)return;
+  const nowT=Date.now(),late=nowT-lastTick>6000;lastTick=nowT;if(late)lastRx=nowT;   /* application en arrière-plan : minuterie ralentie, ce n'est pas une panne */
   if(ws&&ws.readyState===1){
     if(Date.now()-lastRx>9000){pill('Reconnexion…','wait');msg('Liaison avec le PC perdue. Reconnexion…');reviveWs('silence');return}
     sj({type:'ping'});flushLog();
@@ -417,8 +419,8 @@ function adapt(net,nb,now){
 }
 setInterval(async()=>{
   if(!pc||pc.connectionState!=='connected')return;
-  const r=await pc.getStats();let o,rtt,rin;const codecs={};
-  r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;else if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime;else if(x.type==='codec')codecs[x.id]=x;else if(x.type==='remote-inbound-rtp'&&x.kind==='video')rin=x});
+  const r=await pc.getStats();let o,rtt,rin,msrc;const codecs={};
+  r.forEach(x=>{if(x.type==='outbound-rtp'&&x.kind==='video')o=x;else if(x.type==='candidate-pair'&&x.nominated)rtt=x.currentRoundTripTime;else if(x.type==='codec')codecs[x.id]=x;else if(x.type==='remote-inbound-rtp'&&x.kind==='video')rin=x;else if(x.type==='media-source'&&x.kind==='video')msrc=x});   /* media-source : images réellement fournies par la caméra, avant l'encodage */
   if(!o)return;const now=Date.now(),kbps=last?Math.max(0,Math.round((o.bytesSent-last.b)*8/(now-last.t))):0;last={b:o.bytesSent,t:now};
   const fps=o.framesPerSecond||0,cd=codecs[o.codecId];
   $('c2').textContent=(o.frameWidth||'?')+'×'+(o.frameHeight||'?')+' à '+Math.round(fps)+' i/s';
@@ -441,7 +443,7 @@ setInterval(async()=>{
   if(tick++%2===0){try{dev=JSON.parse(window.TPRNative&&TPRNative.status?TPRNative.status():'{}')}catch{dev={}}}
   sj({type:'stats',cam:+$('cam').value,res:(o.frameWidth||0)+'×'+(o.frameHeight||0),fps:Math.round(fps),mbps:+(kbps/1000).toFixed(2),codec:cd?cd.mimeType.replace('video/',''):'',
     rtt:rtt?Math.round(rtt*1000):null,limit:o.qualityLimitationReason||'none',loss:+(((rin&&rin.fractionLost)||0)*100).toFixed(1),level:d?(bad>=3?'bad':'warn'):hw?'warn':'ok',diag:d||hw,thermal:dev.thermal,sec:s,muted:muted,q:+$('q').value,
-    rssi:dev.rssi,link:dev.link,battery:dev.battery,charging:dev.charging});
+    cfps:msrc&&msrc.framesPerSecond?Math.round(msrc.framesPerSecond):null,rssi:dev.rssi,link:dev.link,freq:dev.freq,battery:dev.battery,charging:dev.charging});
 },1000);
 /* Service Android au premier plan pendant le direct (l'application ne sera ni gelée ni tuée en arrière-plan). Absent des anciens APK : sans effet. */
 const keepAlive=on=>{try{window.TPRNative&&TPRNative.keepAlive&&TPRNative.keepAlive(on)}catch{}};

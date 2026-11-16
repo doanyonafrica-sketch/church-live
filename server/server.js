@@ -1,9 +1,9 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {WebSocketServer}=require('ws');
 const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
-const {createJournal,cleanClientLog,summarize}=require('./journal');
+const {createJournal,cleanClientLog,summarize,evaluateDevice}=require('./journal');
 const RELAY=new Set(['offer','answer','candidate']);
-const NUM=['cam','fps','mbps','rtt','loss','sec','q','rssi','link','battery','thermal','jitter','buf','dropped','lost'],
+const NUM=['cam','fps','cfps','mbps','rtt','loss','sec','q','rssi','link','freq','battery','thermal','jitter','buf','dropped','lost'],
   STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
 /* Ne garde que les champs connus, avec des types simples (les statistiques viennent du réseau) */
 const clean=m=>{const o={};
@@ -69,7 +69,8 @@ function createServer(opts={}){
     r.json({app:'tpr-live',pin:PIN,name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',obs:'http://localhost:'+port+'/obs.html',addresses:ips,viewers:all.filter(x=>live(x.viewer)).length,publishers:all.filter(x=>live(x.publisher)).length,
       cpu:cpuPct(),
       rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
-        settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null}))});});
+        settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null,
+        test:x.test?{running:!x.test.result,elapsed:Math.min(Date.now()-x.test.t0,x.test.dur),dur:x.test.dur,drops:x.test.drops,result:x.test.result}:null}))});});
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Réglages envoyés par la fenêtre du PC à un téléphone. Réservé au PC lui-même (même protection que les caméras IP). */
   app.post('/api/phone/:room/set',express.json({limit:'2kb'}),(q,r)=>{
@@ -80,6 +81,20 @@ function createServer(opts={}){
     if(!x.settings)return r.status(409).json({ok:false,error:'Ce téléphone doit être mis à jour pour être réglé depuis le PC.'});
     send(x.publisher,{type:'set',set});jlog('remote-set',{room:String(q.params.room).slice(0,64),...set});r.json({ok:true,sent:set})});
   app.use('/api/phone',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
+  /* Test d'aptitude d'un téléphone : 5 minutes de mesures puis un verdict. Réservé au PC lui-même. */
+  app.post('/api/test/:room/:action',express.json({limit:'1kb'}),(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    const room=String(q.params.room).slice(0,64),x=rooms.get(room);
+    if(q.params.action==='start'){
+      if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
+      const mins=q.body&&[5,10].includes(+q.body.minutes)?+q.body.minutes:5;   /* test rapide (5 min) ou complet (10 min) */
+      x.test={t0:Date.now(),dur:opts.testMs||mins*60000,snaps:[],drops:0,result:null};
+      jlog('test-start',{room,ip:x.publisher._ip});return r.json({ok:true})}
+    if(q.params.action==='stop'){
+      if(!x||!x.test)return r.status(404).json({ok:false,error:'Aucun test en cours.'});
+      finishTest(room,x);return r.json({ok:true})}
+    r.status(400).json({ok:false,error:'Action inconnue.'})});
+  app.use('/api/test',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
   /* Journal : résumé et téléchargement, réservés au PC lui-même */
   app.get('/api/journal/summary',(q,r)=>{
     if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
@@ -96,8 +111,16 @@ function createServer(opts={}){
   /* Détecte les connexions mortes (Wi-Fi coupé sans fermeture propre) et garde la liaison éveillée */
   const hb=setInterval(()=>{for(const w of wss.clients){if(w.dead){jlog('dead',{room:w._room,role:w._role,ip:w._ip});w.terminate();continue}w.dead=true;try{w.ping()}catch{}}},10000);
   hb.unref();
-  const snapT=setInterval(()=>{if(!J)return;for(const [k,x] of rooms){const pub=live(x.publisher),view=live(x.viewer);if(!pub&&!view)continue;
-    const st=x.stats||{},vs=x.vstats||{};J.log('snap',{room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,rssi:st.rssi,link:st.link,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf})}},10000);snapT.unref();
+  /* Fin d'un test d'aptitude : verdict calculé sur les mesures du test, gardé en mémoire (affiché dans la fenêtre du PC) et noté dans le journal */
+  const finishTest=(k,x)=>{
+    if(!x.test||x.test.result)return;
+    const T=x.test,d=x.device||{},m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||''),device=(m?m[1].replace(/ Build\/.*/,''):'')+(d.cores?(m?', ':'')+d.cores+' cœurs':'');
+    T.result=evaluateDevice(T.snaps,{drops:T.drops,device});T.done=Date.now();
+    const f=T.result.fig;jlog('test-result',{room:k,ip:x.publisher&&x.publisher._ip,verdict:T.result.verdict,title:T.result.title,quality:f.quality,fps:f.fps,rtt:f.rtt50,loss:f.loss,bad:f.bad,drops:f.drops,model:device,why:T.result.why})};
+  const snapT=setInterval(()=>{for(const [k,x] of rooms){const pub=live(x.publisher),view=live(x.viewer);
+    const st=x.stats||{},vs=x.vstats||{},row={room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,cfps:st.cfps,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,charging:st.charging,codec:st.codec,rssi:st.rssi,link:st.link,freq:st.freq,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf};
+    if(J&&(pub||view))J.log('snap',row);
+    if(x.test&&!x.test.result){if(pub)x.test.snaps.push({...row,t:Date.now()});if(Date.now()>=x.test.t0+x.test.dur)finishTest(k,x)}}},opts.snapMs||10000);snapT.unref();
   const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{jlog('server-stop',{});clearInterval(snapT);clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
   /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
   /* Nombre de téléphones en direct : le PC s'en sert pour demander confirmation avant de quitter et pour ne pas se mettre à jour pendant un direct */
@@ -142,8 +165,8 @@ function createServer(opts={}){
       if(m.type==='ping'){send(ws,{type:'pong'});return}
       const r=rooms.get(room);if(!r)return;
       /* OBS demande une nouvelle négociation (image absente alors que le téléphone se croit connecté) */
-      if(m.type==='need-offer'){if(role==='viewer'){jlog('need-offer',{room,pub:live(r.publisher)});send(r.publisher,{type:'viewer-joined',keep:false})}return}
-      if(m.type==='log'){if(J)for(const x of cleanClientLog(m,Date.now())){const{t,ev,...d}=x;J.log('c:'+ev,{...d,room,role},t)}return}
+      if(m.type==='need-offer'){if(role==='viewer'){if(live(r.publisher)){jlog('need-offer',{room});send(r.publisher,{type:'viewer-joined',keep:false})}else send(ws,{type:'no-phone'})}return}
+      if(m.type==='log'){for(const it of cleanClientLog(m,Date.now())){const{t,ev,...d}=it;if(J)J.log('c:'+ev,{...d,room,role},t);if(role==='publisher'&&ev==='device')r.device={ua:d.ua,cores:d.cores,ram:d.ram}}return}
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
       /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */
       if(m.type==='onair'){if(role==='viewer'){r.onair=m.value===true;send(r.publisher,{type:'onair',value:r.onair})}return}
@@ -158,6 +181,7 @@ function createServer(opts={}){
     ws.on('close',code=>{
       if(room)jlog('close',{room,role,code,secs:Math.round((Date.now()-tConn)/1000)});
       const r=rooms.get(room);if(!r||r[role]!==ws)return;
+      if(role==='publisher'&&r.test&&!r.test.result&&code!==4000)r.test.drops++;   /* coupure pendant un test d'aptitude */
       r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else{r.stats=null;r.settings=null}
       const other=role==='viewer'?'publisher':'viewer';
       r.t[role]=setTimeout(()=>{

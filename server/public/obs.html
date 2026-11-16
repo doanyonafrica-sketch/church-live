@@ -82,7 +82,8 @@ function render(){
 setInterval(render,500);render();
 
 async function handle(m){
-  if(m.type==='offer'){
+  if(m.type==='no-phone'){noPhone=true;return}   /* aucun téléphone : inutile de redemander tant qu'il n'a pas rappelé */
+  if(m.type==='offer'){noPhone=false;askGap=8000;
     if(pc)pc.close();
     resetFlow();
     pc=new RTCPeerConnection({iceServers:[]});
@@ -97,7 +98,7 @@ async function handle(m){
 }
 function connect(){
   const w=ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  w.onopen=()=>{note('');sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir(),id:MYID,code:CODE});olog('ws-open')};
+  w.onopen=()=>{note('');sj({type:'join',role:'viewer',room,active:isLive(),onair:isOnAir(),id:MYID,code:CODE});olog('ws-open');noPhone=false};
   w.onclose=e=>{
     if(w!==ws)return;                       /* ancienne connexion : la nouvelle est déjà en place */
     olog('ws-close',{code:e.code});
@@ -107,18 +108,20 @@ function connect(){
     setTimeout(connect,1000)};
   w.onmessage=e=>{lastRx=Date.now();q=q.then(()=>handle(JSON.parse(e.data))).catch(console.error)};
 }
-let lastRx=Date.now(),stuckSince=0,lastAsk=0;
+let lastRx=Date.now(),stuckSince=0,lastAsk=0,askGap=8000,noPhone=false,lastTick=Date.now();   /* askGap : délai entre deux demandes, doublé à chaque fois (8 s → 60 s) ; noPhone : le PC a dit qu'aucun téléphone n'est connecté */
 connect();
 /* Surveillance : ping toutes les 3 s ; liaison muette 9 s = morte, on en ouvre une neuve.
    Et si le téléphone est là mais qu'aucune image n'arrive depuis 6 s, on lui demande de renégocier (il se croyait connecté). */
 setInterval(()=>{
+  /* Source OBS cachée : le navigateur ralentit les minuteries (un seul passage par minute). Ce retard n'est pas une panne : on ne conclut pas à une liaison morte. */
+  const nowT=Date.now(),late=nowT-lastTick>6000;lastTick=nowT;if(late)lastRx=nowT;
   if(ws&&ws.readyState===1){
     if(Date.now()-lastRx>9000){lastRx=Date.now();const o=ws;try{o.close()}catch{}connect();return}
     sj({type:'ping'});flushLog();
     const bad=!isLive()||!flowing;
     if(bad){if(!stuckSince)stuckSince=Date.now();
-      if(Date.now()-stuckSince>6000&&Date.now()-lastAsk>8000){lastAsk=Date.now();olog('need-offer');sj({type:'need-offer'})}}
-    else stuckSince=0;
+      if(!noPhone&&Date.now()-stuckSince>10000&&Date.now()-lastAsk>askGap){lastAsk=Date.now();askGap=Math.min(askGap*2,60000);olog('need-offer');sj({type:'need-offer'})}}
+    else{stuckSince=0;askGap=8000}
   }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000){lastRx=Date.now();try{ws.close()}catch{}connect()}
 },3000);
 /* Mesures de réception : toujours envoyées au PC (fenêtre TPR Live) ; affichées dans OBS seulement avec ?debug=1 */
