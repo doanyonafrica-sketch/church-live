@@ -186,30 +186,78 @@ select{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(
 select:focus-visible,input[type=range]:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
 .rsg input[type=range]{width:100%;accent-color:var(--gold)}
 .rsnote,.rsmsg{margin:6px 0;color:var(--mute);font-size:14px}.rsmsg{min-height:20px;color:var(--gold)}
-</style>
-<header><img src="/logo.png" alt="Tabernacle La Parole Révélée"><div><h1>TPR Live</h1><p>Tabernacle La Parole Révélée. Gardez cette fenêtre ouverte pendant le direct.</p></div></header>
 
-<nav class="tabs" role="tablist"><button role="tab" id="t-live" data-tab="live" aria-selected="true">Direct</button><button role="tab" id="t-cam" data-tab="cam" aria-selected="false">Caméras PTZ</button></nav>
+/* ===== Réorganisation : onglets Direct / Connexion / PTZ / Aide, alertes fermables, cartes compactes ===== */
+body{max-width:1100px;padding:20px 28px 44px;font-size:14px}
+header{display:flex;align-items:center;gap:16px;padding-bottom:14px;margin-bottom:14px}
+header img{height:46px}header .ttl{min-width:0}h1{font-size:25px}header p{font-size:13px;margin:0}
+header #banner{margin:0 0 0 auto;padding:9px 18px 9px 14px;border-radius:999px;gap:12px;box-shadow:none;max-width:min(55%,540px)}
+header #banner .big{font-size:16px}header #banner small{font-size:12px;margin-top:1px}header #banner small:empty{display:none}header #banner i{width:12px;height:12px;box-shadow:none}
+.tabs{gap:4px;margin:0 0 18px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:14px;width:max-content;max-width:100%;overflow:auto}
+.tabs button{padding:8px 18px;border-radius:10px;border-bottom:0;margin:0}
+.tabs button[aria-selected=true]{background:var(--gold);color:#1a1204}
+.pair{gap:10px;margin-bottom:14px}.tile{padding:9px 16px;border-radius:12px}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:16px 20px;margin-bottom:14px}
+.card .sec{margin-bottom:0}.card h2{font-size:18px;margin-bottom:4px}.card .addr{background:var(--surf2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}header #banner{max-width:none}header{flex-wrap:wrap}}
+#batalert,#wifialert{position:relative;padding:12px 46px 12px 16px;margin:0 0 12px;font-size:15px}#batalert{font-size:16px}
+.x{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.12);color:var(--text);font:20px/1 var(--sans);display:grid;place-items:center;padding:0}.x:hover{background:rgba(255,255,255,.24)}
+#camempty{margin-bottom:14px;line-height:1.6}#camempty[hidden]{display:none}
+.cam{padding:14px 18px;border-radius:16px;margin-bottom:12px}
+.stat{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:6px 24px;align-items:center}
+.stat>h3{grid-column:1/-1;margin:0 0 4px}.stat .verd{margin:0}.stat .kv{grid-template-columns:repeat(2,1fr);gap:8px 14px}.stat .tech{grid-column:1/-1}
+@media(max-width:760px){.stat{grid-template-columns:1fr}}
+.acc{margin-top:10px;background:var(--surf2);border-radius:12px;padding:0 14px}
+.acc>summary{padding:10px 0;font-size:14px}.acc[open]>summary{border-bottom:1px solid var(--line);margin-bottom:10px}
+.tdet .tbox{margin:0 0 12px;border:0;background:none;padding:0}
+.sechead h2{font-size:18px}
+.nl{margin:6px 0 12px;padding-left:20px;color:var(--mute)}.nl li{margin:4px 0}.chk{display:flex;gap:10px;align-items:center;margin:8px 0 12px;font-weight:600}.chk input{width:18px;height:18px;accent-color:var(--gold)}
+.rh{font:600 17px var(--serif);margin:18px 0 6px;padding-top:14px;border-top:1px solid var(--line)}.rem{display:grid;gap:12px}.days{display:flex;gap:8px;flex-wrap:wrap}.days label{display:flex;gap:6px;align-items:center;background:var(--surf2);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-weight:600;cursor:pointer}.days input{accent-color:var(--gold)}.rrow{display:flex;gap:14px;flex-wrap:wrap;align-items:end}.rrow label{display:flex;flex-direction:column;gap:4px;color:var(--mute);font-size:13px}input[type=time]{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px 12px}
+</style>
+<header><img src="/logo.png" alt="Tabernacle La Parole Révélée"><div class="ttl"><h1>TPR Live</h1><p>Tabernacle La Parole Révélée</p></div>
+<div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div></header>
+
+<nav class="tabs" role="tablist"><button role="tab" id="t-live" data-tab="live" aria-selected="true">Direct</button><button role="tab" id="t-link" data-tab="link" aria-selected="false">Connexion</button><button role="tab" id="t-cam" data-tab="cam" aria-selected="false">Caméras PTZ</button><button role="tab" id="t-help" data-tab="help" aria-selected="false">Aide</button></nav>
+
 <div id="live">
-<div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
 <div id="batalert" hidden role="alert"></div>
 <div id="wifialert" hidden role="alert"></div>
-<div id="netset"><label for="net5">Réseau Wi-Fi 5 GHz, proposé aux téléphones en cas de problème</label>
+<div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
+<div class="empty" id="camempty">Aucune caméra en direct pour le moment. Ouvrez l'onglet <b>Connexion</b> pour voir l'adresse à saisir sur le téléphone, puis touchez le bouton rouge sur le téléphone. Gardez cette fenêtre ouverte pendant le direct.</div>
+<div class="sec" id="camsec" hidden><div class="sechead"><h2>État des caméras</h2><button class="btn sec2" id="det" aria-pressed="false">Détails techniques</button></div><div id="cams"></div></div>
+</div>
+
+<div id="link" hidden>
+<div class="grid2"><div class="card"><div class="sec"><h2>Adresse à saisir sur le téléphone</h2><p>Dans Réglages de l'application, champ « Adresse du PC ».</p><div id="ips"></div><div id="pinbox" hidden><p style="margin-top:14px">Code d'appairage, à saisir une fois dans les Réglages du téléphone (champ « Code »). Il empêche un autre appareil du Wi-Fi de prendre la place d'une caméra.</p><div class="addr"><span class="nm">Code</span><code id="pin"></code><button data-c="pin">Copier</button></div></div></div>
+</div><div class="card"><div class="sec"><h2>Adresses des Sources Navigateur dans OBS</h2><p>Une source par téléphone. Largeur 1920, hauteur 1080, et cochez « Contrôler l'audio via OBS ». Le numéro de caméra se règle dans l'application du téléphone.</p><div id="obsl"></div></div>
+</div></div>
+<div class="card"><h2>Réseau Wi-Fi 5 GHz</h2><div id="netset"><label for="net5">Réseau Wi-Fi 5 GHz, proposé aux téléphones en cas de problème</label>
 <div class="nrow"><input id="net5" maxlength="32" placeholder="Choisissez dans la liste (ou saisissez le nom)" autocomplete="off"><button class="btn" id="netscan" type="button">Rechercher les réseaux</button></div>
 <div id="netlist" role="group" aria-label="Réseaux Wi-Fi trouvés" hidden></div><small id="netmsg" role="status"></small></div>
-<div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
-<div class="sec" id="camsec" hidden><div class="sechead"><h2>État des caméras</h2><button class="btn sec2" id="det" aria-pressed="false">Détails techniques</button></div><div id="cams"></div></div>
+</div>
+<div class="card"><div class="sec"><h2>Démarrage</h2><ol><li>Ajoutez la Source Navigateur dans OBS avec l'adresse ci-dessus.</li><li>Sur le téléphone, saisissez l'adresse du PC puis touchez le bouton rouge.</li><li>Le téléphone passe en EN DIRECT quand OBS reçoit l'image.</li></ol></div>
+</div>
+</div>
 
-<div class="sec"><h2>Adresse à saisir sur le téléphone</h2><p>Dans Réglages de l'application, champ « Adresse du PC ».</p><div id="ips"></div><div id="pinbox" hidden><p style="margin-top:14px">Code d'appairage, à saisir une fois dans les Réglages du téléphone (champ « Code »). Il empêche un autre appareil du Wi-Fi de prendre la place d'une caméra.</p><div class="addr"><span class="nm">Code</span><code id="pin"></code><button data-c="pin">Copier</button></div></div></div>
-<div class="sec"><h2>Adresses des Sources Navigateur dans OBS</h2><p>Une source par téléphone. Largeur 1920, hauteur 1080, et cochez « Contrôler l'audio via OBS ». Le numéro de caméra se règle dans l'application du téléphone.</p><div id="obsl"></div></div>
-<div class="sec"><h2>Démarrage</h2><ol><li>Ajoutez la Source Navigateur dans OBS avec l'adresse ci-dessus.</li><li>Sur le téléphone, saisissez l'adresse du PC puis touchez le bouton rouge.</li><li>Le téléphone passe en EN DIRECT quand OBS reçoit l'image.</li></ol></div>
+<div id="help" hidden>
+<div class="card"><h2>Notifications sur le PC</h2><p>Une notification Windows apparaît, une seule fois par problème, avec un son d'alerte (trois bips pour une alerte critique, avec clignotement dans la barre des tâches) quand :</p>
+<ul class="nl"><li>le Wi-Fi 2,4 GHz est mauvais (il faut demander au téléphone de passer sur le 5 GHz) ;</li><li>la batterie d'un téléphone non branché passe sous 50 %, puis 30 %, puis 15 % ;</li><li>le téléphone signale un problème (il chauffe, le réseau est instable…) ;</li><li>OBS ne reçoit plus l'image d'un téléphone connecté ;</li><li>un téléphone à l'antenne se déconnecte (et quand il revient) ;</li><li>le processeur du PC est surchargé depuis plus de 30 secondes ;</li><li>l'espace libre du disque où TPR Live range ses données passe sous 5 Go, puis sous 1 Go ;</li><li>le direct est terminé : bilan avec la durée, les coupures et la batterie restante.</li></ul>
+<label class="chk"><input type="checkbox" id="notifon"> Recevoir les notifications Windows</label>
+<label class="chk"><input type="checkbox" id="notifsnd"> Son d'alerte</label>
+<div class="acts" style="justify-content:flex-start"><button class="btn sec2" id="notiftest" type="button">Envoyer une notification de test</button></div><p class="hint" id="notifmsg" role="status"></p>
+<h3 class="rh">Rappel avant le culte</h3><p class="hint" style="margin-top:0">Une notification avant le début du culte : état du téléphone et d'OBS, et quels téléphones brancher.</p>
+<label class="chk"><input type="checkbox" id="remon"> Me rappeler de vérifier le matériel avant le culte</label>
+<div class="rem"><div class="days" id="remdays"><label><input type="checkbox" value="0">Dim</label><label><input type="checkbox" value="1">Lun</label><label><input type="checkbox" value="2">Mar</label><label><input type="checkbox" value="3">Mer</label><label><input type="checkbox" value="4">Jeu</label><label><input type="checkbox" value="5">Ven</label><label><input type="checkbox" value="6">Sam</label></div>
+<div class="rrow"><label>Début du culte <input type="time" id="remtime" value="09:00"></label><label>Prévenir <select id="remmin"><option value="5">5 minutes avant</option><option value="10">10 minutes avant</option><option value="15">15 minutes avant</option><option value="30">30 minutes avant</option></select></label><button class="btn sec2" id="remtest" type="button">Tester le rappel</button></div></div>
+</div>
+<div class="card"><div class="sec"><h2>Rapport du direct</h2><p>Résumé automatique de ce qui s'est passé pendant le direct (coupures, reprises, qualité du réseau). À ouvrir après le culte et à envoyer pour améliorer l'application.</p><p><a href="/rapport.html" target="_blank" rel="noopener" style="display:inline-block;background:#e8c47a;color:#1b2a2b;font-weight:600;padding:10px 16px;border-radius:8px;text-decoration:none">Ouvrir le rapport</a></p></div></div>
 <details><summary>L'image saccade ?</summary><ul>
 <li><b>Téléphone :</b> l'application affiche en direct la cause (processeur, réseau ou lumière). Suivez le conseil affiché en haut de l'écran.</li>
 <li><b>Réseau :</b> utilisez le Wi-Fi 5 GHz près du routeur, ou le partage de connexion USB. Le PC de préférence en câble.</li>
 <li><b>OBS :</b> réglez les images par seconde sur 30 (Paramètres, Vidéo) et activez l'accélération matérielle (Paramètres, Avancé).</li>
 <li><b>Tampon :</b> ajoutez <code class="i">?delay=300</code> à l'adresse OBS pour une image plus fluide (un peu plus de latence), ou <code class="i">?delay=100</code> pour plus de réactivité. Par défaut : 180 ms.</li>
 <li><b>Mesures côté OBS :</b> ajoutez <code class="i">?debug=1</code> à l'adresse pour afficher ce qu'OBS reçoit.</li></ul></details>
-<div class="sec"><h2>Rapport du direct</h2><p>Résumé automatique de ce qui s'est passé pendant le direct (coupures, reprises, qualité du réseau). À ouvrir après le culte et à envoyer pour améliorer l'application.</p><p><a href="/rapport.html" target="_blank" rel="noopener" style="display:inline-block;background:#e8c47a;color:#1b2a2b;font-weight:600;padding:10px 16px;border-radius:8px;text-decoration:none">Ouvrir le rapport</a></p></div>
 
 </div>
 
@@ -333,7 +381,7 @@ function statHtml(x,st,vs){
   else if(x.publisher)t+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('OBS','Pas de réception')+'</div></div>';
   return h+(t?'<div class="tech">'+t+'</div>':'')}
 /* Réglages du téléphone : construits UNE fois par caméra (sinon les listes se refermeraient à chaque rafraîchissement) */
-const RS_HTML='<details class="rs"><summary>Régler ce téléphone depuis le PC</summary>'
+const RS_HTML='<details class="rs acc"><summary>Régler ce téléphone depuis le PC</summary>'
   +'<p class="rsnote"></p><div class="rsg" hidden>'
   +'<label class="f"><span>Qualité de l\'image</span><select data-k="q"><option value="480">Économique (480p)</option><option value="720">HD (720p)</option><option value="1080">Full HD (1080p)</option></select></label>'
   +'<label class="f"><span>Priorité</span><select data-k="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select></label>'
@@ -387,30 +435,112 @@ $('cams').addEventListener('change',e=>{const c=e.target.closest('[data-k]');if(
   push(room,{[k]:k==='q'||k==='mvol'?+c.value:c.value})});
 $('cams').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const room=roomOf(b),k=b.dataset.a,S=(LAST[room]||{}).settings||{},p=PEND[room+'|'+k];
   push(room,{[k]:!(p?p.v:S[k])})});
+/* Alertes du haut de la fenêtre : on peut les masquer (×) ; elles ne reviennent que si leur contenu change ou après la fin du problème */
+const DISM={};
+function showAlert(b,html,cls){
+  if(!html){b.hidden=true;b._h='';DISM[b.id]='';return}
+  if(DISM[b.id]===html){b.hidden=true;return}
+  if(b._h!==html||b._c!==cls){b._h=html;b._c=cls;b.className=cls||'';b.innerHTML=html+'<button class="x" type="button" data-dismiss="'+b.id+'" aria-label="Masquer cette alerte">×</button>'}
+  b.hidden=false}
+/* ===== Notifications Windows : une seule par épisode et par caméra, pour les événements importants ===== */
+let NOTIF=true;try{NOTIF=localStorage.notif!=='0'}catch{}
+const camName=room=>room==='main'?'Caméra 1':'Caméra '+String(room).replace(/^cam/,'');
+let SND=true;try{SND=localStorage.snd!=='0'}catch{}
+let AC=null;
+/* Son d'alerte : un bip pour une alerte ordinaire, trois bips pour une alerte critique (aucun fichier audio nécessaire) */
+function beep(crit){if(!SND)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();
+  const n=crit?3:1,f=crit?988:784;for(let k=0;k<n;k++){const t=AC.currentTime+k*.32,o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+.26);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+.28)}}catch{}}
+let flashAt=0;
+function notify(title,body,tag,crit){if(!NOTIF)return false;beep(crit);
+  if(crit&&Date.now()-flashAt>5000){flashAt=Date.now();try{fetch('/api/flash',{method:'POST'}).catch(()=>{})}catch{}}   /* l'icône clignote dans la barre des tâches tant que la fenêtre n'est pas ouverte */
+  try{if(window.Notification&&Notification.permission==='granted'){new Notification(title,{body,tag:tag||title,silent:true});return true}}catch{}return false}
+const W={},BAT={},WAS={},HADV={},SESS={on:false,t0:0,gap:0,drops:0,was:new Set(),gone:new Set(),bat:{}};
+const dur=ms=>{const m=Math.round(ms/60000);return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')};
+/* watch : déclenche onBad() une seule fois quand « bad » dure depuis au moins « delay » ms ; onBack() quand tout redevient normal après une alerte */
+function watch(key,bad,delay,onBad,onBack){const w=W[key]||(W[key]={t:0,n:0}),now=Date.now();
+  if(bad){if(!w.t)w.t=now;if(!w.n&&now-w.t>=delay){w.n=1;onBad()}}
+  else{if(w.n&&onBack)onBack();w.t=0;w.n=0}}
+const BATL=[['Batterie critique',' : le téléphone va s\'éteindre. Branchez-le tout de suite.'],['Batterie faible',' : branchez le téléphone maintenant.'],['La batterie se décharge',' : pensez à brancher le téléphone.']];
+function alerts(rs){
+  const pub=new Set();
+  for(const x of rs){
+    const r=x.room,n=camName(r),st=x.stats&&x.stats.age<5000?x.stats:null;
+    if(x.publisher){pub.add(r);WAS[r]=!!x.onair;if(x.viewer)HADV[r]=true}else delete HADV[r];
+    /* batterie : trois paliers (50, 30 puis 15 %), chacun une seule fois tant que le téléphone n'est pas rebranché */
+    if(st&&st.battery!=null){
+      if(st.charging||st.battery>=55)BAT[r]=0;
+      else{const k=st.battery<15?3:st.battery<30?2:st.battery<50?1:0;
+        if(k>(BAT[r]||0)){BAT[r]=k;const L=BATL[3-k];notify('TPR Live : '+L[0],n+' : '+st.battery+' %'+L[1],'bat'+r,k===3)}}}
+    /* problème signalé par le téléphone (chauffe, réseau instable…) ; le cas du Wi-Fi 2,4 GHz a sa propre notification */
+    watch('bad'+r,!!(st&&st.level==='bad'&&!(x.wifi&&x.wifi.trouble)),10000,()=>notify('TPR Live : problème sur '+n,st.diag||'Cette caméra a un problème.','bad'+r,true));
+    /* OBS ne reçoit plus l'image alors que le téléphone diffuse */
+    watch('obs'+r,!!(x.publisher&&!x.viewer&&HADV[r]),10000,()=>notify('TPR Live : OBS ne reçoit plus '+n,'Le téléphone est connecté, mais OBS n\'a plus l\'image. Vérifiez la Source Navigateur dans OBS.','obs'+r,true))}
+  /* bilan : une session commence au premier téléphone en direct et se termine 60 s après le dernier ; coupure = téléphone revenu après une absence */
+  {const now=Date.now();
+    if(SESS.on)for(const r of SESS.was)if(!pub.has(r))SESS.gone.add(r);
+    if(pub.size){if(!SESS.on){SESS.on=true;SESS.t0=now;SESS.drops=0;SESS.gone.clear();SESS.was=new Set();SESS.bat={}}SESS.gap=0;
+      for(const r of pub)if(SESS.gone.has(r)){SESS.gone.delete(r);SESS.drops++}
+      SESS.was=new Set(pub);
+      for(const x of rs){const b=x.stats&&x.stats.age<5000?x.stats.battery:null;if(b!=null)SESS.bat[x.room]=b}}
+    else if(SESS.on){if(!SESS.gap)SESS.gap=now;
+      if(now-SESS.gap>=60000){SESS.on=false;const d=SESS.gap-SESS.t0;
+        if(d>=5*60000){const bs=Object.entries(SESS.bat).map(([r,b])=>camName(r)+' '+b+' %').join(', ');
+          notify('TPR Live : direct terminé','Durée : '+dur(d)+'. '+(SESS.drops?SESS.drops+(SESS.drops>1?' coupures':' coupure')+' de téléphone.':'Aucune coupure de téléphone.')+(bs?' Batterie restante : '+bs+'.':'')+' Le détail est dans Aide, Rapport du direct.','bilan')}}}}
+  /* téléphone perdu alors qu'il était à l'antenne (terminer le direct à la fin du culte ne déclenche rien : la caméra n'est plus à l'antenne) */
+  for(const r in WAS)watch('ph'+r,WAS[r]&&!pub.has(r),10000,
+    ()=>notify('TPR Live : '+camName(r)+' coupée à l\'antenne','Le téléphone ne répond plus alors que sa caméra était à l\'antenne. Vérifiez le Wi-Fi et la batterie.','ph'+r,true),
+    ()=>notify('TPR Live : '+camName(r)+' reconnectée','Le téléphone est de nouveau connecté.','ph'+r))}
+{const c=$('notifon');c.checked=NOTIF;c.onchange=()=>{NOTIF=c.checked;try{localStorage.notif=NOTIF?'1':'0'}catch{}};
+ $('notiftest').onclick=()=>{const m=$('notifmsg');try{if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}catch{}
+  const ok=notify('TPR Live : test','Si vous voyez ce message et entendez les bips, tout fonctionne.','test',true);
+  m.textContent=ok?'Notification envoyée (le clignotement dans la barre des tâches n\'apparaît que si la fenêtre est en arrière-plan).':NOTIF?'Windows bloque les notifications de TPR Live. Vérifiez Paramètres Windows, Système, Notifications (et le mode « Ne pas déranger »).':'Les notifications sont désactivées : cochez la case ci-dessus.'}}
+/* Rappel avant le culte : jours et heure réglés dans l'onglet Aide ; une seule fois par jour */
+let REM={on:false,days:[0],time:'09:00',min:5};try{Object.assign(REM,JSON.parse(localStorage.rem||'{}'))}catch{}
+const saveRem=()=>{try{localStorage.rem=JSON.stringify(REM)}catch{}};
+let INFO=null;
+function remind(test){
+  const i=INFO||{},ph=(i.rooms||[]).filter(x=>x.publisher&&x.stats&&x.stats.age<5000&&x.stats.battery!=null&&x.stats.battery<50&&!x.stats.charging);
+  return notify('TPR Live : le culte commence '+(test?'bientôt':'dans '+REM.min+' min'),'Téléphone '+(i.publishers?'connecté':'pas encore connecté')+', OBS '+(i.viewers?'connecté':'en attente')+'.'+(ph.length?' Branchez : '+ph.map(x=>camName(x.room)+' ('+x.stats.battery+' %)').join(', ')+'.':' Vérifiez que le téléphone est branché.'),'rappel',false)}
+setInterval(()=>{if(!REM.on)return;const d=new Date(),[hh,mm]=String(REM.time).split(':').map(Number);if(isNaN(hh)||!REM.days.includes(d.getDay()))return;
+  const t=hh*60+mm-REM.min,n=d.getHours()*60+d.getMinutes(),key=d.toDateString();
+  let last='';try{last=localStorage.remDay||''}catch{}
+  if(n>=t&&n<t+10&&last!==key){try{localStorage.remDay=key}catch{}remind()}},15000);
+{const o=$('remon'),tm=$('remtime'),mn=$('remmin'),ds=document.querySelectorAll('#remdays input');
+ o.checked=REM.on;tm.value=REM.time;mn.value=String(REM.min);ds.forEach(c=>c.checked=REM.days.includes(+c.value));
+ const upd=()=>{REM.on=o.checked;REM.time=tm.value||'09:00';REM.min=+mn.value;REM.days=[...ds].filter(c=>c.checked).map(c=>+c.value);saveRem()};
+ [o,tm,mn,...ds].forEach(c=>c.onchange=upd);
+ $('remtest').onclick=()=>{const ok=remind(true);$('notifmsg').textContent=ok?'Rappel de test envoyé.':'Notification non envoyée : voir « Envoyer une notification de test ».'}}
+{const c=$('notifsnd');c.checked=SND;c.onchange=()=>{SND=c.checked;try{localStorage.snd=SND?'1':'0'}catch{}}}
 function cams(list){
   const rs=(list||[]).filter(x=>x.publisher||(x.stats&&x.stats.age<5000)).sort((a,b)=>a.room<b.room?-1:1);
   /* Alerte batterie : visible en haut de la fenêtre, pour ne pas dépendre d'un coup d'œil dans la carte de chaque caméra */
-  const wa=wifiAlert(rs),wb=$('wifialert');
-  if(wb){if(wa){if(wb._h!==wa.html){wb._h=wa.html;wb.innerHTML=wa.html}wb.hidden=false}else{wb.hidden=true;wb._h=''}}
+  const wa=wifiAlert(rs);showAlert($('wifialert'),wa&&wa.html);
   for(const x of rs){const on=!!(x.wifi&&x.wifi.trouble);   /* notification Windows, une fois par épisode */
-    if(on&&!NOTIFIED[x.room]){NOTIFIED[x.room]=1;try{if(window.Notification&&Notification.permission==='granted')new Notification('TPR Live : Wi-Fi 2,4 GHz',{body:(x.room==='main'?'Caméra 1':'Caméra '+String(x.room).replace(/^cam/,''))+' : connexion mauvaise sur le 2,4 GHz. Prévenez la personne qui tient le téléphone.'})}catch{}}
+    if(on&&!NOTIFIED[x.room]){NOTIFIED[x.room]=1;notify('TPR Live : Wi-Fi 2,4 GHz',camName(x.room)+' : connexion mauvaise sur le 2,4 GHz. Touchez « Prévenir le téléphone » dans TPR Live pour lui demander de passer sur le Wi-Fi 5 GHz.','wifi'+x.room)}
     else if(!on)NOTIFIED[x.room]=0}
-  const lb=lowBat(rs),ba=$('batalert');
-  if(ba){if(lb){ba.className=lb.cls;ba.innerHTML=lb.html;ba.hidden=false}else ba.hidden=true}
-  $('camsec').hidden=!rs.length;
+  alerts(rs);
+  const lb=lowBat(rs);showAlert($('batalert'),lb&&lb.html,lb&&lb.cls);
+  $('camsec').hidden=!rs.length;$('camempty').hidden=!!rs.length;
   const keep=new Set(rs.map(x=>x.room));
   for(const[room,el]of CARDS)if(!keep.has(room)){el.remove();CARDS.delete(room);delete LAST[room]}
   const box=$('cams');
   rs.forEach((x,i)=>{
     let el=CARDS.get(x.room);
-    if(!el){el=document.createElement('div');el.className='cam';el.dataset.room=x.room;el.innerHTML='<div class="stat"></div><div class="tst"></div>'+RS_HTML;CARDS.set(x.room,el)}
+    if(!el){el=document.createElement('div');el.className='cam';el.dataset.room=x.room;el.innerHTML='<div class="stat"></div><details class="acc tdet" hidden><summary>Test d\'aptitude du téléphone</summary><div class="tst"></div></details>'+RS_HTML;CARDS.set(x.room,el)}
     if(box.children[i]!==el)box.insertBefore(el,box.children[i]||null);
     LAST[x.room]=x;
     const st=x.stats&&x.stats.age<5000?x.stats:null,vs=x.vstats&&x.vstats.age<5000?x.vstats:null;
     el.querySelector('.stat').innerHTML=statHtml(x,st,vs);
-    const th=testHtml(x.test,x);if(el._th!==th){el._th=th;el.querySelector('.tst').innerHTML=th}   /* ne réécrit la zone du test que si elle change */
+    const th=testHtml(x.test,x);if(el._th!==th){el._th=th;el.querySelector('.tst').innerHTML=th}
+    {const td=el.querySelector('.tdet'),tr=!!(x.test&&x.test.running);td.hidden=!th;if(tr&&!el._tr)td.open=true;el._tr=tr}   /* ne réécrit la zone du test que si elle change */
     updSettings(x.room,el,x)})}
 async function r(){let i;try{i=await (await fetch('/info')).json()}catch{return}
+INFO=i;
+watch('cpu',i.cpu!=null&&i.cpu>85,30000,()=>notify('TPR Live : PC surchargé','Le processeur du PC est à '+i.cpu+' %. L\'image risque de saccader : fermez les programmes inutiles.','cpu',true));
+if(i.disk){const go=v=>(v/1e9).toFixed(1).replace('.',',')+' Go';
+  watch('disk1',i.disk.free<1e9,0,()=>notify('TPR Live : disque presque plein','Il reste '+go(i.disk.free)+' sur le disque de TPR Live. Libérez de la place tout de suite.','disk1',true));
+  watch('disk',i.disk.free<5e9&&i.disk.free>=1e9,0,()=>notify('TPR Live : espace disque faible','Il reste '+go(i.disk.free)+' sur le disque de TPR Live. Pensez à libérer de la place.','disk'))}
 cams(i.rooms);$('ct').textContent=(i.cpu!=null?i.cpu+' %':'—');$('ct').className=i.cpu>85?'bad2':i.cpu>65?'warn2':'';
 const rm={};(i.rooms||[]).forEach(x=>rm[x.room]=x);
 const h=[1,2,3,4].map(n=>{const room=n===1?'main':'cam'+n,u=i.obs+(n===1?'':'?room='+room),x=rm[room]||{};
@@ -447,6 +577,7 @@ $('netscan').onclick=async()=>{
   b.disabled=false;b.textContent='Rechercher les réseaux'};
 document.addEventListener('click',()=>{try{if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}catch{}},{once:true});
 document.addEventListener('click',async e=>{
+  const dx=e.target.closest&&e.target.closest('[data-dismiss]');if(dx){const b=$(dx.dataset.dismiss);DISM[b.id]=b._h;b.hidden=true;return}
   const nb=e.target.closest&&e.target.closest('[data-notice]');
   if(nb){nb.disabled=true;try{const j=await (await fetch('/api/notice/'+encodeURIComponent(nb.dataset.notice),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({net5:(($('net5')&&$('net5').value)||'').trim()})})).json();nb.textContent=j.ok?'Demande envoyée':(j.error||'Erreur')}catch{nb.textContent='Erreur de communication'}return}
   const b=e.target.closest&&e.target.closest('[data-test]');if(!b)return;

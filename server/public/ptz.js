@@ -15,7 +15,7 @@ let cams=[],cur=null,speed=+(store.get('ptz-speed')||.5),ptzOk=true,tab='live',a
 function show(t){
   tab=t;
   for(const b of document.querySelectorAll('.tabs button'))b.setAttribute('aria-selected',b.dataset.tab===t);
-  $('live').hidden=t!=='live';$('cam').hidden=t!=='cam';
+  for(const id of['live','link','cam','help'])$(id).hidden=id!==t;
   if(t==='cam'){load()}else{halt();stopImg()}
 }
 document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.tab)});

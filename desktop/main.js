@@ -68,7 +68,7 @@ function updates(){
 function start(){
   /* Empêche Windows de se mettre en veille pendant que TPR Live tourne */
   try{powerSaveBlocker.start('prevent-app-suspension')}catch(e){log('Anti-veille indisponible : '+e.message)}
-  srv=createServer({dataDir:app.getPath('userData'),pin:loadPin(app.getPath('userData')),cipher:makeCipher()});
+  srv=createServer({onFlash:()=>{try{if(win&&!win.isDestroyed()&&typeof win.flashFrame==='function'&&!(win.isFocused&&win.isFocused()))win.flashFrame(true)}catch{}},dataDir:app.getPath('userData'),pin:loadPin(app.getPath('userData')),cipher:makeCipher()});
   srv.on('error',e=>{log('Serveur : '+e.message);dialog.showErrorBox('TPR Live','Impossible de démarrer le serveur (port 3000 déjà utilisé ?) : '+e.message);app.quit()});
   srv.listen(PORT,'0.0.0.0',()=>{
     Menu.setApplicationMenu(null);
@@ -84,6 +84,7 @@ function start(){
         if(r===0)e.preventDefault();
       }
     });
+    win.on('focus',()=>{try{win.flashFrame&&win.flashFrame(false)}catch{}});   /* l'alerte a été vue : la barre des tâches arrête de clignoter */
     win.on('closed',()=>{win=null});
     if(app.isPackaged){try{updates()}catch(e){log('Mises à jour indisponibles : '+e.message)}firewall()}
   });

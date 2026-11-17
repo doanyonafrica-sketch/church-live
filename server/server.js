@@ -62,6 +62,14 @@ function createServer(opts={}){
       return originOk(req.headers.origin,req.headers.host,local)&&(!local||hostOk(req.headers.host))}});
   const rooms=new Map();
   const live=w=>!!w&&w.readyState===1;
+  /* Espace libre du disque où TPR Live range ses données (relu au plus toutes les 30 s) */
+  let disk=null,diskAt=0;
+  const readDisk=()=>{if(Date.now()-diskAt<30000)return;diskAt=Date.now();try{fs.statfs(opts.dataDir||os.homedir(),(e,st)=>{if(!e&&st)disk={free:st.bavail*st.bsize,total:st.blocks*st.bsize}})}catch{}};
+  /* Fait clignoter la fenêtre dans la barre des tâches (alertes critiques). Réservé au PC lui-même. */
+  app.post('/api/flash',(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    try{opts.onFlash&&opts.onFlash()}catch{}
+    r.json({ok:true})});
   app.get('/info',(q,r)=>{
     /* Un appareil du réseau ne voit que ce qu'il faut pour retrouver le PC (la recherche automatique du téléphone) */
     if(!isLocalAddr(q.socket.remoteAddress)||!hostOk(q.headers.host)||!originOk(q.headers.origin,q.headers.host,true))return r.json({app:'tpr-live',name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',pin:!!PIN});
@@ -69,7 +77,7 @@ function createServer(opts={}){
     for(const l of Object.values(os.networkInterfaces()))for(const i of l)if(i.family==='IPv4'&&!i.internal)ips.push(i.address+':'+port);
     const all=[...rooms.values()];
     r.json({app:'tpr-live',pin:PIN,name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',obs:'http://localhost:'+port+'/obs.html',addresses:ips,viewers:all.filter(x=>live(x.viewer)).length,publishers:all.filter(x=>live(x.publisher)).length,
-      cpu:cpuPct(),
+      cpu:cpuPct(),disk:(readDisk(),disk),
       rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
         settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null,
         wifi:x.stats?{band:typeof x.stats.freq==='number'&&x.stats.freq>0?(x.stats.freq<3000?'2,4':'5'):null,ssid:x.stats.ssid||null,link:x.stats.link==null?null:x.stats.link,trouble:!!x.w24,guess:!!x.w24guess,since:x.w24at||null,noticed:x.noticeAt||null}:null,
