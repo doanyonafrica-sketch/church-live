@@ -90,7 +90,12 @@ body.run:not(.ui) #zoomwrap{display:none}
 #zoomwrap.show{display:flex}
 #zoom{flex:1;accent-color:var(--text)}
 #scan,#found button{display:block;width:100%;margin-top:8px;background:var(--text);color:var(--bg);font-weight:700;border-radius:10px;padding:11px 14px}
-#scan:disabled{opacity:.6}
+#scan:disabled,#updchk:disabled{opacity:.6}
+#updchk{display:block;width:100%;margin-top:8px;font-weight:700;padding:11px 14px}
+#updstat{color:var(--mute);font-size:14px;margin-top:8px;line-height:1.4;white-space:pre-line}
+#upd .uf{margin-top:8px;background:rgba(4,26,31,.92);border:1px solid var(--warn);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.4;max-width:46ch;pointer-events:auto}
+#upd .uf button{display:block;width:100%;margin-top:8px;background:var(--gold);color:#1a1204;border-radius:10px;padding:9px 12px;font-weight:700}
+#upd .uf code{word-break:break-all;color:var(--gold)}
 #found{color:var(--mute);font-size:14px}
 #upd:empty{display:none}
 #upd a{display:block;background:var(--text);color:var(--bg);font-weight:700;border-radius:10px;padding:9px 14px;text-decoration:none;font-size:14px}
@@ -134,7 +139,7 @@ input[type=text],select{width:100%;background:var(--bg);color:var(--text);border
 #pill,#air,#chips span,#msg span,#zoomwrap{background:rgba(4,26,31,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 #chips span{border:1px solid var(--line)}
 #vu{background:rgba(243,236,217,.12)}
-#scan,#found button,#upd a{background:var(--gold);color:#1a1204;border-radius:12px}
+#scan,#found button,#upd a,#updchk{background:var(--gold);color:#1a1204;border-radius:12px}
 #found button{margin-top:8px}
 #alert{border-radius:12px}
 .wt{background:linear-gradient(transparent,rgba(2,22,26,.9) 45%);padding-top:48px;gap:6px}
@@ -184,6 +189,7 @@ input[type=text],select{background:rgba(0,0,0,.3);border-radius:12px}
   <div class="fld"><label for="codec">Compression vidéo</label><select id="codec"><option value="auto">Automatique</option><option value="h264">H.264 (soulage le processeur)</option><option value="vp8">VP8</option></select><p class="hint">Si l'image saccade et que le diagnostic parle du processeur, essayez H.264.</p></div>
   <div class="fld"><label for="prio">Priorité</label><select id="prio"><option value="sharp">Netteté (garder la définition)</option><option value="fluid">Fluidité (garder 30 images/s)</option></select><p class="hint">Netteté : l'image reste en haute définition ; si le téléphone ou le réseau peine, ce sont quelques images qui sautent, jamais la définition qui baisse. Fluidité : l'inverse. Pris en compte tout de suite.</p></div>
   <div class="fld"><label for="fluid">Image fluide de nuit</label><select id="fluid"><option value="off">Normal</option><option value="on">Priorité fluidité (recommandé la nuit)</option><option value="max">Fluidité maximale (image plus sombre)</option></select><p class="hint">Quand la lumière baisse, certains téléphones passent de 30 à 10 images par seconde et l'image « rame ». Ces réglages demandent à la caméra de garder 30 images par seconde. Tous les téléphones ne les acceptent pas. Pris en compte tout de suite.</p><p class="hint" id="fluidinfo"></p></div>
+  <div class="fld"><label for="updchk">Mise à jour</label><button id="updchk" type="button">Rechercher une mise à jour</button><div id="updstat" role="status"></div><p class="hint">Le téléphone demande la dernière version au PC (sans Internet), sinon à GitHub. Si rien n'apparaît, le PC n'a pas encore reçu sa mise à jour : redémarrez TPR Live sur le PC.</p></div>
   <div id="diag">Le diagnostic apparaît pendant le direct.</div>
   <div id="ver"></div>
 </dialog>
@@ -344,6 +350,11 @@ async function onMsg(m){
   if(m.type==='pong')return;
   if(m.type==='speedtest'){runSpeed();return}
   if(m.type==='speed-result'){plog('speed',{mbps:m.mbps||0,ms:m.ms||0});return}
+  if(m.type==='wifiscan'){   /* le PC cherche les réseaux Wi-Fi pour les proposer dans une liste : le téléphone lit la liste d'Android (la position n'est jamais lue) */
+    let ok=false;try{if(window.TPRNative&&TPRNative.scanWifi){TPRNative.scanWifi();ok=true}}catch{}   /* 1er appel : lance la recherche */
+    await new Promise(r=>setTimeout(r,3500));
+    let list=[];try{if(ok)list=JSON.parse(TPRNative.scanWifi()||'[]')}catch{}
+    sj({type:'wifilist',list:Array.isArray(list)?list.slice(0,60):[],unsupported:!ok});plog('wifiscan',{n:list.length,ok});return}
   if(m.type==='notice'){   /* demande de la personne au PC : changer de Wi-Fi (Android ne permet pas de le faire à distance) */
     if(m.kind==='wifi5'){noticeTxt='Demande du PC : passez ce téléphone sur le Wi-Fi 5 GHz'+(typeof m.net5==='string'&&m.net5?' (réseau « '+m.net5.slice(0,32)+' »)':'')+(dev.freq>0&&dev.freq<3000?' (il est sur le 2,4 GHz'+(dev.ssid?', réseau '+dev.ssid:'')+')':'')+'. Réglages Android, Wi-Fi, choisissez le réseau '+(typeof m.net5==='string'&&m.net5?'« '+m.net5.slice(0,32)+' »':'5 GHz')+', puis revenez ici.';
       noticeUntil=Date.now()+120000;alertBox(noticeTxt);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300])}catch{}plog('notice',{kind:'wifi5'})}
@@ -566,33 +577,66 @@ window.onTprFound=list=>{
 };
 $('scan').onclick=discover;
 if(!$('addr').value)setTimeout(discover,800);
-let tick=0,dev={},updShown=false;
-async function checkUpdate(){
-  if(VERSION==='dev'||updShown)return;
-  const gt=(x,y)=>{x=x.split('.').map(Number);y=y.split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
+let tick=0,dev={},updShown=false,updBusy=false;
+const updSay=t=>{const e=$('updstat');if(e)e.textContent=t};
+const gtv=(x,y)=>{x=String(x||'').split('.').map(Number);y=String(y||'').split('.').map(Number);for(let i=0;i<3;i++)if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0);return false};
+/* manual = touche « Rechercher une mise à jour » : le résultat s'écrit en toutes lettres dans les réglages (version du PC, de GitHub, du téléphone) */
+async function checkUpdate(manual){
+  if(VERSION==='dev'){if(manual)updSay('Version de développement : pas de vérification.');return}
+  if(updShown){if(manual)updSay('Une nouvelle version est prête : fermez les réglages et touchez « Nouvelle version » sur l\'écran principal.');return}
+  if(updBusy){return}updBusy=true;if(manual)updSay('Vérification en cours…');
   const show=(v,url,sha)=>{updShown=true;const l=document.createElement('a');l.href=url;l.target='_blank';
     if(!/^[0-9a-f]{64}$/i.test(sha||'')){l.removeAttribute('href');l.textContent='Version '+v+' disponible, mais sans empreinte de sécurité : mettez d\'abord le PC à jour';$('upd').appendChild(l);return}
     l.textContent='Nouvelle version '+v+' disponible : toucher pour installer';
-    l.onclick=e=>{if(window.TPRNative){e.preventDefault();l.textContent='Téléchargement de la version '+v+'…';try{TPRNative.install(url,sha)}catch{l.textContent='Échec du téléchargement'}}};
-    $('upd').appendChild(l)};
+    l.onclick=e=>{if(window.TPRNative){e.preventDefault();clearFail();l.textContent='Téléchargement de la version '+v+'…';try{TPRNative.install(url,sha)}catch{l.textContent='Échec du téléchargement'}}};
+    $('upd').appendChild(l);plog('update-available',{v:v});try{navigator.vibrate&&navigator.vibrate(120)}catch{}};
   /* Empreinte officielle publiée sur GitHub (HTTPS) : sert à vérifier ce que le PC propose, quand le téléphone a Internet */
-  const gh=async()=>{try{const c=new AbortController();setTimeout(()=>c.abort(),4000);
-    const j=await (await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest',{signal:c.signal})).json();
+  const gh=async()=>{try{const c=new AbortController();const to=setTimeout(()=>c.abort(),5000);
+    const r=await fetch('https://api.github.com/repos/doanyonafrica-sketch/church-live/releases/latest',{signal:c.signal});clearTimeout(to);
+    if(!r.ok)return{err:r.status===403||r.status===429?'limite de requêtes atteinte (HTTP '+r.status+')':'erreur HTTP '+r.status};
+    const j=await r.json();
     const m=/sha256:\s*([0-9a-f]{64})/i.exec(j.body||''),a=(j.assets||[]).find(x=>x.name==='church-live.apk');
-    return{v:(j.tag_name||'').replace(/^v/,''),sha:m?m[1].toLowerCase():'',url:a&&a.browser_download_url}}catch{return null}};
-  /* 1) auprès du PC (fonctionne sans Internet : le PC se met à jour seul, puis fournit l'APK au téléphone) */
-  const base=$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'');
-  if(base){try{const j=await (await fetch('http://'+base+'/apk-version.json',{cache:'no-store'})).json();
-    if(j.version&&gt(j.version,VERSION)){
-      const g=await gh();
-      if(g&&g.v===j.version&&g.sha&&j.sha256&&g.sha!==String(j.sha256).toLowerCase()){msg('Mise à jour refusée : le fichier proposé par le PC ne correspond pas à la version officielle.');return}
-      show(j.version,'http://'+base+'/church-live.apk',j.sha256);return}}catch{}}
-  /* 2) sinon auprès de GitHub (si le téléphone a Internet) */
-  const g=await gh();
-  if(g&&g.url&&g.sha&&gt(g.v,VERSION))show(g.v,g.url,g.sha);
+    return{v:(j.tag_name||'').replace(/^v/,''),sha:m?m[1].toLowerCase():'',url:a&&a.browser_download_url}}catch{return{err:'injoignable (pas d\'Internet ?)'}}};
+  try{
+    /* 1) auprès du PC (fonctionne sans Internet : le PC se met à jour seul, puis fournit l'APK au téléphone) */
+    const base=$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'');
+    let pc=null,pcErr='';
+    if(!base)pcErr='adresse du PC non saisie';
+    else{try{const r=await fetch('http://'+base+'/apk-version.json',{cache:'no-store'});if(!r.ok)throw 0;const j=await r.json();if(j&&j.version)pc=j;else pcErr='le PC ne propose aucune version'}catch{pcErr='le PC ne répond pas (ou n\'a pas de version de l\'application à proposer)'}}
+    const g=await gh();
+    if(pc&&gtv(pc.version,VERSION)){
+      if(g&&!g.err&&g.v===pc.version&&g.sha&&pc.sha256&&g.sha!==String(pc.sha256).toLowerCase()){msg('Mise à jour refusée : le fichier proposé par le PC ne correspond pas à la version officielle.');updSay('Mise à jour refusée : le fichier proposé par le PC ne correspond pas à la version officielle.');return}
+      show(pc.version,'http://'+base+'/church-live.apk',pc.sha256);if(manual)updSay('Nouvelle version '+pc.version+' disponible (fournie par le PC). Fermez les réglages et touchez « Nouvelle version ».');return}
+    /* 2) sinon auprès de GitHub (si le téléphone a Internet) */
+    if(g&&!g.err&&g.url&&g.sha&&gtv(g.v,VERSION)){
+      show(g.v,g.url,g.sha);
+      if(manual)updSay('Nouvelle version '+g.v+' disponible sur GitHub'+(pc?' (le PC est encore en version '+pc.version+' : pensez à le mettre à jour aussi)':'')+'. Fermez les réglages et touchez « Nouvelle version ».');return}
+    if(manual){
+      const L=['Ce téléphone : version '+VERSION,'PC : '+(pc?'version '+pc.version:pcErr),'GitHub : '+(g.err?g.err:(g.v?'version '+g.v:'aucune version publiée'))];
+      if(g&&!g.err&&gtv(g.v,VERSION)&&(!g.url||!g.sha))L.push('La version '+g.v+' est publiée mais son fichier ou son empreinte de sécurité est introuvable.');
+      else if(g&&!g.err&&pc&&gtv(g.v,pc.version))L.push('Le PC n\'est pas à jour (version '+pc.version+', alors que la '+g.v+' existe) : redémarrez TPR Live sur le PC pour qu\'il installe sa mise à jour, puis recherchez à nouveau.');
+      else if((pc||(g&&!g.err))&&!(g&&!g.err&&gtv(g.v,VERSION))&&!(pc&&gtv(pc.version,VERSION)))L.push('Vous avez la dernière version.');
+      else if(!pc&&g&&g.err)L.push('Impossible de vérifier : ni le PC ni GitHub ne répondent.');
+      updSay(L.join('\n'))}
+  }finally{updBusy=false}
 }
-window.onTprUpdateFailed=t=>{msg(t);const l=$('upd').querySelector('a');if(l)l.textContent='Échec de la mise à jour : toucher pour réessayer'};
-checkUpdate();$('addr').addEventListener('change',checkUpdate);
+$('updchk').onclick=async()=>{const b=$('updchk');b.disabled=true;await checkUpdate(true);b.disabled=false};
+/* échec d'installation : la VRAIE raison donnée par Android. Cas « clé de signature différente » : bouton pour désinstaller puis adresse pour réinstaller. */
+function clearFail(){const f=$('upd').querySelector('.uf');if(f)f.remove()}
+window.onTprUpdateInfo=t=>{const l=$('upd').querySelector('a');if(l)l.textContent=t};
+window.onTprUpdateFailed=(t,kind)=>{
+  msg(t);plog('update-failed',{kind:String(kind||'other'),why:String(t||'').slice(0,160)});
+  const l=$('upd').querySelector('a');if(l)l.textContent='Échec de la mise à jour : toucher pour réessayer';
+  clearFail();const f=document.createElement('div');f.className='uf';f.appendChild(document.createTextNode(t));
+  if(kind==='signature'||kind==='conflict'){
+    const base=$('addr').value.trim().replace(/^wss?:\/\//,'').replace(/\/ws$/,'');
+    const p=document.createElement('div');p.style.marginTop='6px';p.append('Après la désinstallation, ouvrez dans Chrome : ');const c=document.createElement('code');c.textContent='http://'+(base||'adresse-du-PC:3000')+'/church-live.apk';p.appendChild(c);f.appendChild(p);
+    const b=document.createElement('button');b.textContent='Désinstaller TPR Live maintenant';b.onclick=()=>{try{TPRNative.uninstallSelf()}catch{}};f.appendChild(b)}
+  $('upd').appendChild(f);updSay(t)};
+checkUpdate();$('addr').addEventListener('change',()=>checkUpdate());
+setInterval(()=>{if(!running)checkUpdate()},5*60*1000);   /* le PC se met à jour pendant la semaine : on revérifie sans qu'il faille rouvrir l'application */
+/* version installée, code de version et empreinte de la clé de signature : utile pour comprendre un refus de mise à jour */
+try{if(window.TPRNative&&TPRNative.appInfo){const a=JSON.parse(TPRNative.appInfo()||'{}');if(a.versionName)$('ver').textContent+=' · installée : '+a.versionName+' (code '+a.versionCode+')'+(a.signer?' · clé '+a.signer:'')}}catch{}
 
 /* Commandes : visibles au démarrage, puis elles se cachent seules ; toucher l'écran les fait revenir ou disparaître */
 function showUI(){document.body.classList.add('ui');clearTimeout(uiT);uiT=setTimeout(()=>document.body.classList.remove('ui'),4500)}

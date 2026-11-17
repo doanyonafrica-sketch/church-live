@@ -2,6 +2,7 @@ const express=require('express'),http=require('http'),os=require('os'),path=requ
 const {WebSocketServer}=require('ws');
 const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
 const {createJournal,cleanClientLog,summarize,evaluateDevice}=require('./journal');
+const {scanPC,fromPhone,mergeNetworks}=require('./wifi');
 const RELAY=new Set(['offer','answer','candidate']);
 const NUM=['cam','fps','cfps','mbps','rtt','loss','sec','q','rssi','link','freq','battery','thermal','jitter','buf','dropped','lost'],
   STR=['res','codec','limit','level','diag','ssid'],BOOL=['muted','charging'];
@@ -91,6 +92,33 @@ function createServer(opts={}){
     const net5=q.body&&typeof q.body.net5==='string'?q.body.net5.replace(/[<>&"'`]/g,'').trim().slice(0,32):'';   /* nom du réseau 5 GHz saisi sur le PC */
     send(x.publisher,{type:'notice',kind:'wifi5',net5});x.noticeAt=Date.now();jlog('notice-sent',{room,kind:'wifi5',ip:x.publisher._ip,net5});r.json({ok:true})});
   app.use('/api/notice',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
+  /* Recherche des réseaux Wi-Fi à choisir dans une liste (au lieu de les taper). D'abord le PC ; s'il ne voit aucun réseau (câble, pas de carte Wi-Fi),
+     on demande aux téléphones en direct de chercher. Réservé au PC lui-même. */
+  const scans=new Set();
+  const askPhones=ms=>new Promise(res=>{
+    const targets=[...rooms.values()].map(x=>x.publisher).filter(live);
+    if(!targets.length)return res({asked:0,list:[],unsupported:0});
+    const job={need:new Set(targets),list:[],unsupported:0};
+    const done=()=>{clearTimeout(t);scans.delete(job);res({asked:targets.length,list:job.list,unsupported:job.unsupported})};
+    const t=setTimeout(done,ms);job.done=done;scans.add(job);
+    for(const w of targets)send(w,{type:'wifiscan'});
+  });
+  app.get('/api/wifi/scan',async(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    r.set('Cache-Control','no-store');
+    let nets=[],source=null,note='';
+    try{nets=await(opts.wifiScan||scanPC)()}catch{nets=[]}
+    if(nets.length)source='pc';
+    else{
+      const p=await askPhones(opts.wifiPhoneMs||7000);
+      nets=mergeNetworks(p.list);
+      if(nets.length)source='phone';
+      else if(!p.asked)note='Ce PC ne voit aucun réseau Wi-Fi (câble réseau ou pas de carte Wi-Fi). Démarrez le direct sur un téléphone puis relancez la recherche : c\'est le téléphone qui cherchera les réseaux. Vous pouvez aussi saisir le nom à la main.';
+      else if(p.unsupported>=p.asked)note='Le téléphone doit être mis à jour pour chercher les réseaux Wi-Fi.';
+      else note='Le téléphone n\'a trouvé aucun réseau. Vérifiez que la localisation du téléphone est activée et que l\'autorisation « Position précise » est accordée à TPR Live (la position n\'est jamais lue : Android l\'exige pour lister les réseaux).';
+    }
+    jlog('wifi-scan',{source,n:nets.length});
+    r.json({ok:true,source,networks:nets,note})});
   /* Test d'aptitude d'un téléphone : 5 minutes de mesures puis un verdict. Réservé au PC lui-même. */
   app.post('/api/test/:room/:action',express.json({limit:'1kb'}),(q,r)=>{
     if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
@@ -182,6 +210,10 @@ function createServer(opts={}){
       }
       /* Battement de coeur applicatif : le client sait ainsi que la liaison vit (un Wi-Fi coupé sans fermeture propre ne se voit pas autrement) */
       if(m.type==='ping'){send(ws,{type:'pong'});return}
+      /* Réseaux Wi-Fi vus par le téléphone, en réponse à la recherche lancée depuis la fenêtre du PC */
+      if(m.type==='wifilist'){if(role==='publisher')for(const job of scans)if(job.need.delete(ws)){
+        if(m.unsupported===true)job.unsupported++;else job.list.push(...fromPhone(m.list));
+        if(!job.need.size)job.done()}return}
       const r=rooms.get(room);if(!r)return;
       /* OBS demande une nouvelle négociation (image absente alors que le téléphone se croit connecté) */
       if(m.type==='need-offer'){if(role==='viewer'){if(live(r.publisher)){jlog('need-offer',{room});send(r.publisher,{type:'viewer-joined',keep:false})}else send(ws,{type:'no-phone'})}return}

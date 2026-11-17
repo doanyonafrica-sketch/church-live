@@ -90,7 +90,7 @@ jobs:
           grep -q sensorLandscape android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><application#' android/app/src/main/AndroidManifest.xml
           # Service au premier plan « caméra + micro » pendant le direct (mobile/patch/LiveService.java)
-          sed -i 's#<application#<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/><application#' android/app/src/main/AndroidManifest.xml
           sed -i 's#</application>#<service android:name=".LiveService" android:exported="false" android:foregroundServiceType="camera|microphone"/></application>#' android/app/src/main/AndroidManifest.xml
           grep -q 'android:name=".LiveService"' android/app/src/main/AndroidManifest.xml
           npx cap sync android
@@ -104,7 +104,12 @@ jobs:
           BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
           "$BT/zipalign" -p -f 4 "$APKU" "$RUNNER_TEMP/aligned.apk"
           "$BT/apksigner" sign --ks ~/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out ../../church-live.apk "$RUNNER_TEMP/aligned.apk"
-          "$BT/apksigner" verify --print-certs ../../church-live.apk
+          "$BT/apksigner" verify --print-certs ../../church-live.apk | tee "$RUNNER_TEMP/certs.txt"
+          # Empreinte de la clé de signature : le téléphone affiche la sienne (Réglages, en bas : « clé xxxxxxxxxxxx »). Si elles diffèrent,
+          # Android refuse la mise à jour par-dessus (« application non installée ») : il faut désinstaller l'ancienne une seule fois.
+          CERT=$(grep -m1 "certificate SHA-256 digest" "$RUNNER_TEMP/certs.txt" | awk '{print $NF}')
+          echo "::notice::Clé de signature de cet APK (SHA-256) : $CERT  |  à comparer à « clé ${CERT:0:12} » dans les Réglages du téléphone"
+          echo "Clé de signature de l'APK (SHA-256) : \`$CERT\` (les 12 premiers caractères s'affichent dans les Réglages du téléphone)" >> "$GITHUB_STEP_SUMMARY"
           # Contrôles : non débogable, permissions et service du direct présents
           "$BT/aapt2" dump badging ../../church-live.apk > "$RUNNER_TEMP/badging.txt"
           "$BT/aapt2" dump xmltree --file AndroidManifest.xml ../../church-live.apk > "$RUNNER_TEMP/manifest.txt"
