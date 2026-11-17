@@ -213,7 +213,8 @@ $('ver').textContent=VERSION==='dev'?'Version de développement':'TPR Live '+VER
 const ROOM=()=>$('cam').value==='1'?'main':'cam'+$('cam').value;
 const sj=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
 const msg=t=>$('m').textContent=t,pill=(t,s)=>{$('pt').textContent=t;document.body.classList.toggle('wait',s==='wait')};
-const alertBox=t=>{$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
+let noticeTxt='',noticeUntil=0;   /* alerte envoyée par le PC : reste affichée 2 minutes, les alertes automatiques ne l'effacent pas */
+const alertBox=t=>{if(noticeTxt&&Date.now()<noticeUntil&&t!==noticeTxt)return;$('alert').textContent=t;$('alert').classList.toggle('show',!!t);if(t)$('diag').textContent=t};
 const openSet=()=>$('sheet').showModal();
 ['addr','q','codec','prio','cam','code','fluid'].forEach(k=>$(k).onchange=()=>{localStorage[k]=$(k).value.trim();if(running&&['q','codec','prio','fluid'].includes(k))applyChanges([k]);else reportSetSoon()});
 $('gear').onclick=openSet;$('close').onclick=()=>$('sheet').close();
@@ -333,8 +334,20 @@ setInterval(()=>{
   }else if(ws&&ws.readyState===0&&Date.now()-lastRx>12000)reviveWs('bloque');   /* tentative de connexion bloquée */
 },3000);
 window.addEventListener('online',()=>{if(running){plog('net-online');setTimeout(()=>reviveWs('online'),300)}});
+/* Essai de débit demandé par le PC pendant un test d'aptitude : ~1 Mo envoyé en rafale, pour mesurer ce que le Wi-Fi laisse passer sans vidéo */
+async function runSpeed(){
+  const pad='x'.repeat(80000);
+  for(let i=0;i<12;i++){if(!ws||ws.readyState!==1)return;sj({type:'speed',i,pad});if(ws.bufferedAmount>400000)await new Promise(r=>setTimeout(r,15))}
+  sj({type:'speed-end'});
+}
 async function onMsg(m){
   if(m.type==='pong')return;
+  if(m.type==='speedtest'){runSpeed();return}
+  if(m.type==='speed-result'){plog('speed',{mbps:m.mbps||0,ms:m.ms||0});return}
+  if(m.type==='notice'){   /* demande de la personne au PC : changer de Wi-Fi (Android ne permet pas de le faire à distance) */
+    if(m.kind==='wifi5'){noticeTxt='Demande du PC : passez ce téléphone sur le Wi-Fi 5 GHz'+(typeof m.net5==='string'&&m.net5?' (réseau « '+m.net5.slice(0,32)+' »)':'')+(dev.freq>0&&dev.freq<3000?' (il est sur le 2,4 GHz'+(dev.ssid?', réseau '+dev.ssid:'')+')':'')+'. Réglages Android, Wi-Fi, choisissez le réseau '+(typeof m.net5==='string'&&m.net5?'« '+m.net5.slice(0,32)+' »':'5 GHz')+', puis revenez ici.';
+      noticeUntil=Date.now()+120000;alertBox(noticeTxt);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300])}catch{}plog('notice',{kind:'wifi5'})}
+    return}
   if(m.type==='busy'||m.type==='denied')return;busy=0;
   if(m.type==='viewer-joined'){if(m.keep&&pc&&pc.connectionState==='connected')return;await offer()}
   else if(m.type==='answer'&&pc)await pc.setRemoteDescription({type:'answer',sdp:tune(m.sdp)});
@@ -443,7 +456,7 @@ setInterval(async()=>{
   if(tick++%2===0){try{dev=JSON.parse(window.TPRNative&&TPRNative.status?TPRNative.status():'{}')}catch{dev={}}}
   sj({type:'stats',cam:+$('cam').value,res:(o.frameWidth||0)+'×'+(o.frameHeight||0),fps:Math.round(fps),mbps:+(kbps/1000).toFixed(2),codec:cd?cd.mimeType.replace('video/',''):'',
     rtt:rtt?Math.round(rtt*1000):null,limit:o.qualityLimitationReason||'none',loss:+(((rin&&rin.fractionLost)||0)*100).toFixed(1),level:d?(bad>=3?'bad':'warn'):hw?'warn':'ok',diag:d||hw,thermal:dev.thermal,sec:s,muted:muted,q:+$('q').value,
-    cfps:msrc&&msrc.framesPerSecond?Math.round(msrc.framesPerSecond):null,rssi:dev.rssi,link:dev.link,freq:dev.freq,battery:dev.battery,charging:dev.charging});
+    cfps:msrc&&msrc.framesPerSecond?Math.round(msrc.framesPerSecond):null,rssi:dev.rssi,link:dev.link,freq:dev.freq,ssid:dev.ssid,battery:dev.battery,charging:dev.charging});
 },1000);
 /* Service Android au premier plan pendant le direct (l'application ne sera ni gelée ni tuée en arrière-plan). Absent des anciens APK : sans effet. */
 const keepAlive=on=>{try{window.TPRNative&&TPRNative.keepAlive&&TPRNative.keepAlive(on)}catch{}};

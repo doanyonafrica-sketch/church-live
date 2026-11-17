@@ -28,7 +28,9 @@ assert(/stopService\(new Intent\(this, LiveService\.class\)\)/.test(main),'MainA
 /* 3) workflow : le service et ses permissions sont ajoutés au manifeste, l'APK est de type release, signé, et contrôlé */
 assert(rel.includes('cp patch/LiveService.java'),'LiveService.java copié dans le projet Android');
 assert(/<service android:name="\.LiveService"[^>]*android:foregroundServiceType="camera\|microphone"/.test(rel),'service déclaré dans le manifeste');
-for(const p of['FOREGROUND_SERVICE','FOREGROUND_SERVICE_CAMERA','FOREGROUND_SERVICE_MICROPHONE','POST_NOTIFICATIONS','CAMERA','RECORD_AUDIO'])
+assert(/<uses-permission android:name="android\.permission\.ACCESS_FINE_LOCATION"\/><application#/.test(rel),'localisation déclarée dans le manifeste (lecture du nom du réseau Wi-Fi)');
+assert(/SDK_INT >= 23[\s\S]*ACCESS_FINE_LOCATION[\s\S]*requestPermissions\(need\.toArray\(new String\[0\]\), 7101\)/.test(main)&&(main.match(/requestPermissions\(/g)||[]).length===1,'une seule demande d\'autorisations (notification + localisation), protégée par la version d\'Android');
+for(const p of['FOREGROUND_SERVICE','FOREGROUND_SERVICE_CAMERA','FOREGROUND_SERVICE_MICROPHONE','POST_NOTIFICATIONS','CAMERA','RECORD_AUDIO','ACCESS_FINE_LOCATION'])
   assert(rel.includes('android.permission.'+p+'"'),'permission '+p+' déclarée');
 assert(rel.includes('assembleRelease')&&!rel.includes('assembleDebug'),'APK de type release');
 assert(rel.includes('apksigner')&&rel.includes('zipalign'),'APK aligné puis signé');

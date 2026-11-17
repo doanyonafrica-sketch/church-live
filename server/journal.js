@@ -61,7 +61,7 @@ function evaluateDevice(snaps,info){
   if(snaps.length>=21)snaps=snaps.slice(3);   /* les 30 premières secondes (établissement de la liaison) ne comptent pas */
   const n=snaps.length;
   const col=k=>snaps.map(s=>s[k]).filter(num),q=(a,f)=>{a=a.slice().sort((x,y)=>x-y);return a.length?a[Math.min(a.length-1,Math.floor(a.length*f))]:null};
-  const out={verdict:'insuffisant',title:'Test trop court',scope:'',checks:[],advice:[],fig:{n:n,secs:n*10},device:info.device||'',why:''};
+  const out={verdict:'insuffisant',title:'Test trop court',scope:'',checks:[],advice:[],fig:{n:n,secs:n*10},device:info.device||'',why:'',cause:{kind:'insuffisant',title:'Test trop court : pas de conclusion possible',why:[],proof:''}};
   if(n<18){out.advice.push('Relancez le test et laissez-le durer 5 minutes, avec le téléphone connecté.');return out}
   const fps=avg(col('fps')),fps10=q(col('fps'),.1),rtt50=q(col('rtt'),.5),rtt95=q(col('rtt'),.95),loss=avg(col('loss'));
   const bad=snaps.filter(s=>s.level==='bad').length/n,cpu=snaps.filter(s=>s.limit==='cpu').length/n,th=Math.max(0,...col('thermal'));
@@ -83,10 +83,13 @@ function evaluateDevice(snaps,info){
   /* 6. processeur et chaleur */
   C('cpu','Processeur et chaleur',cpu<=0.05&&th<=1?'ok':cpu<=0.20&&th<=2?'warn':'fail','processeur limitant la qualité '+Math.round(cpu*100)+' % du temps, chauffe '+th,'Fermez les autres applications, désactivez l\'économiseur de batterie, baissez la qualité, ou utilisez un autre téléphone.');
   /* 7. Wi-Fi (information : jamais bloquant à lui seul) */
-  const fr=col('freq'),lk=col('link');
-  if(fr.length>=n/2){const p24=fr.filter(x=>x<3000).length/fr.length;
-    C('wifi','Wi-Fi',p24>=0.5?'warn':'ok',p24>=0.5?'bande 2,4 GHz (moins fiable quand beaucoup d\'appareils sont présents)':'bande 5 GHz, vitesse de liaison '+Math.round(avg(lk)||0)+' Mb/s',ADV_WIFI)}
-  else if(lk.length>=n/2){const a=avg(lk);C('wifi','Wi-Fi',a>=100?'ok':'warn','vitesse de liaison '+Math.round(a)+' Mb/s'+(a>=100?' (compatible 5 GHz)':', probablement le 2,4 GHz'),ADV_WIFI)}
+  const fr=col('freq'),lk=col('link'),p24=fr.length>=n/2?fr.filter(x=>x<3000).length/fr.length:null,lkAvg=lk.length>=n/2?avg(lk):null;   /* p24 : part du temps en 2,4 GHz ; null = bande non enregistrée */
+  if(p24!=null)C('wifi','Wi-Fi',p24>=0.5?'warn':'ok',p24>=0.5?'bande 2,4 GHz (moins fiable quand beaucoup d\'appareils sont présents)':'bande 5 GHz, vitesse de liaison '+Math.round(avg(lk)||0)+' Mb/s',ADV_WIFI);
+  else if(lkAvg!=null)C('wifi','Wi-Fi',lkAvg>=100?'ok':'warn','vitesse de liaison '+Math.round(lkAvg)+' Mb/s'+(lkAvg>=100?' (compatible 5 GHz)':', probablement le 2,4 GHz'),ADV_WIFI);
+  /* 7 bis. Débit réel du Wi-Fi vers le PC (essai sans vidéo) et reconnexions Wi-Fi pendant le test */
+  const sp=num(info.speed)?info.speed:null,ipCh=num(info.ipChanges)?info.ipChanges:null;
+  if(sp!=null)C('speed','Capacité d\'envoi du Wi-Fi',sp>=12?'ok':sp>=6?'warn':'fail','débit mesuré vers le PC : '+r1(sp)+' Mb/s (la vidéo en 720p en demande environ 4)',ADV_WIFI);
+  if(ipCh!=null)C('ip','Connexion Wi-Fi',ipCh===0?'ok':ipCh===1?'warn':'fail',ipCh===0?'aucune reconnexion au Wi-Fi pendant le test':'le téléphone a changé d\'adresse '+ipCh+' fois : il s\'est reconnecté au Wi-Fi',ADV_WIFI);
   /* 8. batterie (conseil : jamais bloquant) */
   const bt=col('battery'),chg=snaps.filter(s=>s.charging===true).length/n;let drain=null;
   if(bt.length){const b0=bt[0],b1=bt[bt.length-1];
@@ -100,8 +103,31 @@ function evaluateDevice(snaps,info){
   out.scope=(h?'Testé en '+h+'p. ':'')+(h&&h<720?'Le verdict ne vaut que pour cette qualité. ':'');
   for(const c of F.concat(W))if(c.advice&&!out.advice.includes(c.advice))out.advice.push(c.advice);
   out.why=F.concat(W).map(c=>c.name+' ('+c.detail+')').join(' ; ').slice(0,110);
-  out.fig={n,secs:n*10,fps:r1(fps),rtt50,rtt95,loss:r1(loss),bad:Math.round(bad*100),cpu:Math.round(cpu*100),thermal:th,drops:num(info.drops)?info.drops:null,drain:drain==null?null:Math.round(drain),quality:h};
+  /* Cause probable : le téléphone, le Wi-Fi 2,4 GHz ou le réseau ? On compare les signes de chacun. */
+  const netBad=(rtt50!=null&&(rtt50>150||rtt95>800))||(loss!=null&&loss>3)||(sp!=null&&sp<6)||(ipCh!=null&&ipCh>=2);
+  const cpuBad=cpu>0.2||th>=3,phoneBad=camSlow||cpuBad||(fps!=null&&fps<22&&!netBad),l24=p24!=null?p24>=0.5:(lkAvg!=null&&lkAvg<=72);
+  const netWhy=[],phoneWhy=[];
+  if(rtt50!=null&&(rtt50>150||rtt95>800))netWhy.push('latence typique '+rtt50+' ms, jusqu\'à '+rtt95+' ms');
+  if(loss!=null&&loss>3)netWhy.push('pertes de données '+r1(loss)+' %');
+  if(sp!=null&&sp<6)netWhy.push('débit mesuré vers le PC seulement '+r1(sp)+' Mb/s');
+  if(ipCh!=null&&ipCh>=2)netWhy.push('reconnexions au Wi-Fi : adresse changée '+ipCh+' fois');
+  if(l24)netWhy.push(p24!=null?'bande 2,4 GHz ('+Math.round(p24*100)+' % du temps)':'vitesse de liaison '+Math.round(lkAvg)+' Mb/s, typique du 2,4 GHz (bande non enregistrée par cette version)');
+  if(camSlow)phoneWhy.push('la caméra du téléphone ne fournit que '+Math.round(cf)+' images/s (lumière insuffisante ou caméra limitée)');
+  if(cpuBad)phoneWhy.push('processeur limitant la qualité '+Math.round(cpu*100)+' % du temps, chauffe '+th);
+  if(!camSlow&&!cpuBad&&fps!=null&&fps<22&&!netBad)phoneWhy.push(r1(fps)+' images/s alors que la latence est bonne : le téléphone n\'arrive pas à encoder assez vite');
+  const PW='Preuve à faire : refaites le même test avec ce téléphone, au même endroit, connecté au Wi-Fi 5 GHz. Si le résultat devient meilleur, la bande 2,4 GHz était la cause.',
+        PN='Preuve à faire : refaites le test au plus près du routeur, puis avec un autre téléphone au même endroit. Si l\'autre téléphone est bon au même endroit, le réseau n\'est pas en cause : c\'est le téléphone (ou sa puce Wi-Fi).',
+        PP='Preuve à faire : testez ce téléphone à l\'endroit où le premier téléphone marchait bien, avec la même lumière. S\'il reste mauvais, c\'est bien le téléphone.';
+  const noProblem=!F.length&&!W.some(c=>['fps','rtt','loss','bad','drops','cpu','speed','ip'].includes(c.key));
+  out.cause=noProblem?{kind:'ok',title:'Aucun problème de téléphone ni de réseau',why:[],proof:''}
+    :netBad&&phoneBad?{kind:'mixed',title:'Le téléphone et le réseau sont tous deux en cause',why:netWhy.concat(phoneWhy),proof:PN+' '+PP}
+    :netBad?(l24?{kind:'wifi24',title:'Cause probable : le Wi-Fi 2,4 GHz',why:netWhy,proof:PW}:{kind:'network',title:'Cause probable : le réseau (Wi-Fi, routeur ou distance)',why:netWhy,proof:PN})
+    :phoneBad?{kind:'phone',title:'Cause probable : le téléphone lui-même',why:phoneWhy,proof:PP}
+    :{kind:'unknown',title:'Cause non déterminée',why:['les mesures sont limites, sans signe net du téléphone ni du réseau'],proof:'Refaites un test complet de 10 minutes pour avoir plus de mesures.'};
+  out.fig={n,secs:n*10,fps:r1(fps),rtt50,rtt95,loss:r1(loss),bad:Math.round(bad*100),cpu:Math.round(cpu*100),thermal:th,drops:num(info.drops)?info.drops:null,drain:drain==null?null:Math.round(drain),quality:h,
+    band:p24==null?null:(p24>=0.5?'2,4':'5'),speed:sp==null?null:r1(sp),ipChanges:ipCh,camfps:cf==null?null:Math.round(cf)};
   return out}
+
 /* Diagnostic automatique : transforme les chiffres en conclusions, comme le ferait quelqu'un qui relit le journal à la main */
 function diagnose(r,endT){
   const D=[],ps=r.snaps.filter(s=>s.pub),n=ps.length,num=x=>typeof x==='number'&&isFinite(x);
@@ -118,6 +144,12 @@ function diagnose(r,endT){
     else why='code de fermeture '+a.c.code;
     D.push('⚠ Téléphone absent de '+dm(a.c.t)+' à '+(a.to?dm(a.to):'la fin du journal')+' ('+fmtDur(a.secs)+') : '+why+'.')}
   if(ab2.length>8)D.push('… et '+(ab2.length-8)+' autre(s) absence(s) du téléphone.');
+  /* 1 bis) Changements d'adresse IP : à chaque reconnexion au Wi-Fi, le téléphone reçoit parfois une autre adresse */
+  const byId={};for(const x of r.pj){if(!x.id)continue;(byId[x.id]=byId[x.id]||[]).push(x.ip)}
+  for(const [id,a] of Object.entries(byId)){let ch=0;for(let i=1;i<a.length;i++)if(a[i]&&a[i-1]&&a[i]!==a[i-1])ch++;
+    if(ch>=2)D.push('⚠ Le téléphone d\'identifiant '+id+' a changé d\'adresse IP '+ch+' fois ('+[...new Set(a.filter(Boolean))].join(', ')+') : il s\'est reconnecté au Wi-Fi à chaque fois. Son Wi-Fi est instable.')}
+  /* 1 ter) Alertes Wi-Fi 2,4 GHz déclenchées pendant le direct, et demandes envoyées au téléphone */
+  if(r.w24.length)D.push('⚠ Alerte Wi-Fi 2,4 GHz déclenchée '+r.w24.length+' fois (à '+r.w24.slice(0,5).map(e=>clock(e.t)).join(', ')+(r.w24.length>5?', …':'')+') : connexion mauvaise sur le 2,4 GHz pendant plus de 30 secondes.'+(r.notices.length?' Le PC a prévenu le téléphone '+r.notices.length+' fois (à '+r.notices.slice(0,5).map(e=>clock(e.t)).join(', ')+').':' Personne n\'a prévenu le téléphone depuis le PC.'));
   /* 2) Consommation de batterie */
   let dt=0,dd=0;for(let i=1;i<n;i++){const a=ps[i-1],b=ps[i];if(b.t-a.t<=30000&&num(a.battery)&&num(b.battery)&&a.charging!==true&&b.charging!==true&&b.battery<=a.battery){dt+=b.t-a.t;dd+=a.battery-b.battery}}
   if(dt>=600000){const rate=dd/(dt/3600000);if(rate>=15)D.push('⚠ Le téléphone perd environ '+Math.round(rate)+' % de batterie par heure sans être branché : il tient environ '+(Math.round(100/rate*10)/10)+' h depuis 100 %. Branchez-le pendant le direct.')}
@@ -146,12 +178,12 @@ function diagnose(r,endT){
   return D}
 function summarizeSession(ev,L){
   const rooms={};
-  const R=k=>rooms[k]||(rooms[k]={pubJoin:0,pubClose:0,viewJoin:0,viewClose:0,dead:0,left:0,needOffer:0,codes:{},outages:[],snaps:[],client:{},busy:0,denied:0,since:null,sets:[],remote:0,dev:[],pc:[],pj:[],deniedIps:new Set(),hidden:[],tests:[]});
+  const R=k=>rooms[k]||(rooms[k]={pubJoin:0,pubClose:0,viewJoin:0,viewClose:0,dead:0,left:0,needOffer:0,codes:{},outages:[],snaps:[],client:{},busy:0,denied:0,since:null,sets:[],remote:0,dev:[],pc:[],pj:[],deniedIps:new Set(),hidden:[],tests:[],w24:[],notices:[]});
   const starts=[],PJ=[],DV=[];
   for(const e of ev){
     if(e.ev==='server-start'){starts.push(e.t);continue}
     if(!e.room)continue;const r=R(e.room);
-    if(e.ev==='join'){if(e.role==='publisher'){r.pubJoin++;r.pj.push({t:e.t});PJ.push({room:e.room,ip:e.ip,t:e.t});if(r.since!=null){r.outages.push({from:r.since,to:e.t,secs:(e.t-r.since)/1000});r.since=null}}else r.viewJoin++}
+    if(e.ev==='join'){if(e.role==='publisher'){r.pubJoin++;r.pj.push({t:e.t,ip:e.ip,id:e.id});PJ.push({room:e.room,ip:e.ip,id:e.id,t:e.t});if(r.since!=null){r.outages.push({from:r.since,to:e.t,secs:(e.t-r.since)/1000});r.since=null}}else r.viewJoin++}
     else if(e.ev==='close'){const k=e.role+':'+e.code;r.codes[k]=(r.codes[k]||0)+1;
       if(e.role==='publisher'){r.pubClose++;r.pc.push({t:e.t,code:e.code,secs:e.secs||0});if(![4000,1000,1001,1005].includes(e.code)&&r.since==null)r.since=e.t}else r.viewClose++}   /* 1000/1001/1005 : arrêt normal ; 4000 : remplacé par le même téléphone */
     else if(e.ev==='dead')r.dead++;
@@ -161,6 +193,8 @@ function summarizeSession(ev,L){
     else if(e.ev==='denied'){r.denied++;if(e.why==='code'&&e.ip)r.deniedIps.add(e.ip)}
     else if(e.ev==='remote-set')r.remote++;
     else if(e.ev==='test-result')r.tests.push(e);
+    else if(e.ev==='wifi24-alert')r.w24.push(e);
+    else if(e.ev==='notice-sent')r.notices.push(e);
     else if(e.ev==='settings')r.sets.push(e);
     else if(e.ev==='snap')r.snaps.push(e);
     else if(e.ev.startsWith('c:')){if(e.ev==='c:device'){r.dev.push(e);DV.push(e)}if(e.ev==='c:app-hidden')r.hidden.push(e.t);const k=(e.role||'?')+' '+e.ev.slice(2);r.client[k]=(r.client[k]||0)+1}
@@ -185,7 +219,7 @@ function summarizeSession(ev,L){
     if(r.since!=null){const end=ev[ev.length-1].t;
       L.push('⚠ Le téléphone ne s\'est PAS reconnecté après la coupure de '+dm(r.since)+' : aucun retour jusqu\'à la fin du journal ('+fmtDur((end-r.since)/1000)+' sans caméra).')}
     else if(!r.outages.length)L.push('Aucune coupure du téléphone.');
-    if(r.tests.length){L.push('Tests d’aptitude des téléphones :');for(const t of r.tests)L.push('   • '+clock(t.t)+(t.ip?' '+t.ip:'')+(t.model?' ('+t.model+')':'')+' : '+t.title+(t.quality?' en '+t.quality+'p':'')+(t.why?' — '+t.why:''))}
+    if(r.tests.length){L.push('Tests d’aptitude des téléphones :');for(const t of r.tests)L.push('   • '+clock(t.t)+(t.ip?' '+t.ip:'')+(t.model?' ('+t.model+')':'')+' : '+t.title+(t.quality?' en '+t.quality+'p':'')+(t.band?' ('+t.band+' GHz)':'')+(t.cause?' — '+t.cause:'')+(t.why?' — '+t.why:''))}
     if(r.sets.length){const seen=[];for(const e of r.sets){const d='qualité '+e.q+'p, priorité '+e.prio+', fluidité '+e.fluid+', codec '+e.codec+(e.muted?', micro coupé':'');
         if(!seen.length||seen[seen.length-1].d!==d)seen.push({t:e.t,d})}
       L.push('Réglages du téléphone : '+seen.slice(0,6).map(x=>clock(x.t)+' '+x.d).join(' ; ')+(seen.length>6?' ; …':'')+(r.remote?' (réglages envoyés depuis le PC : '+r.remote+')':''))}
@@ -200,6 +234,8 @@ function summarizeSession(ev,L){
       const lim={};for(const s of ps)if(s.limit&&s.limit!=='none')lim[s.limit]=(lim[s.limit]||0)+1;
       const ls=Object.entries(lim).map(([k,v])=>k+' '+v*10+' s').join(', ');if(ls)L.push('   Qualité limitée par : '+ls);
       const bad=ps.filter(s=>s.level==='bad').length*10;if(bad)L.push('   Temps en alerte « mauvais » : '+fmtDur(bad));
+      const wl={};for(const s of ps){const b=typeof s.freq==='number'?(s.freq<3000?'2,4 GHz':'5 GHz'):'bande inconnue',k=(s.ssid?'« '+s.ssid+' » ':'')+b;wl[k]=(wl[k]||0)+1}
+      L.push('   Wi-Fi utilisé : '+Object.entries(wl).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+' ('+Math.round(v/ps.length*100)+' % du temps)').join(' ; ')+(ps.some(s=>s.ssid)?'':'   (nom du réseau non lisible : Android ne le donne qu\'avec l\'autorisation de localisation)'));
       const bs=ps.filter(s=>typeof s.battery==='number');
       if(bs.length){const low=bs.find(s=>s.battery<=20);
         L.push('   Batterie : '+bs[0].battery+' % ('+clock(bs[0].t)+') → '+bs[bs.length-1].battery+' % ('+clock(bs[bs.length-1].t)+')'+(low?'  ⚠ sous 20 % dès '+clock(low.t)+' : branchez le téléphone':'')+(bs.some(s=>typeof s.charging==='boolean')?'  |  branché '+fmtDur(bs.filter(s=>s.charging===true).length*10)+', non branché '+fmtDur(bs.filter(s=>s.charging===false).length*10):''))}
@@ -212,19 +248,22 @@ function summarizeSession(ev,L){
     const cl=Object.entries(r.client).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+' ×'+v);
     if(cl.length)L.push('Événements signalés par les appareils : '+cl.join(', '));
   }
-  /* Comparaison des téléphones : qui a bien tenu, qui a ramé, et pourquoi (modèle, vitesse et bande Wi-Fi, batterie) */
+  /* Comparaison des téléphones : qui a bien tenu, qui a ramé, et pourquoi. On suit chaque téléphone par son identifiant
+     (stable), pas par son adresse IP, qui change à chaque reconnexion au Wi-Fi. */
   const by={},camName=k=>k==='main'?'caméra 1':'caméra '+String(k).replace(/^cam/,'');
   for(const [name,r] of Object.entries(rooms))for(const s of r.snaps){if(!s.pub)continue;let j=null;
     for(const x of PJ){if(x.room!==name)continue;if(x.t<=s.t)j=x;else break}
-    if(!j||!j.ip)continue;const k=j.ip+'|'+name;(by[k]=by[k]||{ip:j.ip,room:name,s:[]}).s.push(s)}
-  const rows=Object.values(by).filter(o=>o.s.length>=6).sort((a,b)=>a.room<b.room?-1:a.room>b.room?1:a.ip<b.ip?-1:1);
+    if(!j||!(j.id||j.ip))continue;const key=(j.id||j.ip)+'|'+name;(by[key]=by[key]||{id:j.id,ip:j.ip,room:name,s:[]}).s.push(s)}
+  const rows=Object.values(by).filter(o=>o.s.length>=6).sort((a,b)=>a.room<b.room?-1:a.room>b.room?1:(a.id||a.ip)<(b.id||b.ip)?-1:1);
+  const mine=(x,o)=>x.room===o.room&&(o.id?x.id===o.id:x.ip===o.ip);
   if(rows.length>=2){
-    L.push('','--- Comparaison des téléphones (par adresse IP ; un même téléphone peut changer d\'adresse en se reconnectant) ---');
+    L.push('','--- Comparaison des téléphones (suivis par identifiant ; un même téléphone peut changer d\'adresse IP en se reconnectant) ---');
     for(const o of rows){const a=o.s,nn=f=>a.map(s=>s[f]).filter(x=>typeof x==='number'&&isFinite(x)),rt=nn('rtt').sort((x,y)=>x-y),fr=nn('freq'),bt=nn('battery');
+      const ips=[];let ch=0;for(const x of PJ){if(!mine(x,o))continue;if(!ips.length||ips[ips.length-1]!==x.ip){if(ips.length)ch++;ips.push(x.ip)}}
       let model='';for(const d of DV){if(d.room!==o.room)continue;let j=null;for(const x of PJ){if(x.room!==o.room)continue;if(x.t<=d.t)j=x;else break}
-        if(j&&j.ip===o.ip){const m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||'');model=' | '+(m?m[1].replace(/ Build\/.*/,''):'modèle inconnu')+(d.cores?', '+d.cores+' cœurs':'');}}
-      L.push('   '+o.ip+' ('+camName(o.room)+') : '+fmtDur(a.length*10)+' | '+N(r1(avg(nn('fps'))))+' images/s | latence '+N(rt.length?rt[Math.floor(rt.length/2)]:null)+' ms (max '+N(rt.length?rt[rt.length-1]:null)+') | Wi-Fi '+N(r1(avg(nn('link'))))+' Mb/s'
-        +(fr.length?' en '+(fr.filter(x=>x<3000).length/fr.length>=0.5?'2,4':'5')+' GHz':'')+' | alerte '+Math.round(a.filter(s=>s.level==='bad').length/a.length*100)+' % | batterie '+N(bt[0])+' → '+N(bt[bt.length-1])+' %'+model+(a.length>=21?' | verdict : '+evaluateDevice(a,{}).title:''))}}
+        if(j&&mine(j,o)){const m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||'');model=' | '+(m?m[1].replace(/ Build\/.*/,''):'modèle inconnu')+(d.cores?', '+d.cores+' cœurs':'');}}
+      L.push('   '+[...new Set(ips.filter(Boolean))].join(' / ')+(o.id?' [id '+o.id+']':'')+' ('+camName(o.room)+') : '+fmtDur(a.length*10)+' | '+N(r1(avg(nn('fps'))))+' images/s | latence '+N(rt.length?rt[Math.floor(rt.length/2)]:null)+' ms (max '+N(rt.length?rt[rt.length-1]:null)+') | Wi-Fi '+N(r1(avg(nn('link'))))+' Mb/s'
+        +(fr.length?' en '+(fr.filter(x=>x<3000).length/fr.length>=0.5?'2,4':'5')+' GHz':'')+' | alerte '+Math.round(a.filter(s=>s.level==='bad').length/a.length*100)+' % | batterie '+N(bt[0])+' → '+N(bt[bt.length-1])+' %'+model+(ch?' | adresse IP changée '+ch+' fois':'')+(()=>{const c={};for(const s of a)if(s.ssid)c[s.ssid]=(c[s.ssid]||0)+1;const t=Object.entries(c).sort((x,y)=>y[1]-x[1])[0];return t?' | réseau « '+t[0]+' »':''})()+(a.length>=21?' | verdict : '+evaluateDevice(a,{}).title:''))}}
   return Object.keys(rooms);
 }
 /* Résumé lisible, découpé par session (une session = une période d'activité, séparée de la suivante par plus de 15 minutes de silence) */
@@ -238,6 +277,17 @@ function summarize(ev){
   S.forEach((x,i)=>{
     L.push('','==================== SESSION '+(i+1)+' — '+longDate(x.start)+', '+clock(x.start)+' → '+(longDate(x.end)!==longDate(x.start)?dm(x.end):clock(x.end))+' ====================');
     for(const k of summarizeSession(x.ev,L))all.add(k)});
+  /* Preuve par comparaison : le même téléphone testé sur le 2,4 GHz puis sur le 5 GHz */
+  const TR=ev.filter(e=>e.ev==='test-result'&&e.id),byTel={};for(const e of TR)(byTel[e.id]=byTel[e.id]||[]).push(e);
+  const rank={apte:3,conditions:2,non:1,insuffisant:0};
+  for(const [id,a] of Object.entries(byTel)){const last={};for(const e of a)if(e.band&&e.verdict!=='insuffisant')last[e.band]=e;
+    if(last['2,4']&&last['5']){const x=last['2,4'],y=last['5'],rx=rank[x.verdict],ry=rank[y.verdict];
+      L.push('','=== Comparaison des tests du téléphone [id '+id+'] : 2,4 GHz contre 5 GHz ===');
+      L.push('   '+dm(x.t)+' en 2,4 GHz : '+x.title+(x.why?' — '+x.why:''));
+      L.push('   '+dm(y.t)+' en 5 GHz   : '+y.title+(y.why?' — '+y.why:''));
+      L.push(ry>rx?'   ⇒ PREUVE : le résultat est meilleur en 5 GHz. La bande 2,4 GHz était bien la cause : gardez ce téléphone sur le 5 GHz.'
+        :ry===rx?'   ⇒ Le résultat ne change pas avec la bande : la cause est ailleurs (le téléphone lui-même ou le réseau).'
+        :'   ⇒ Le résultat est meilleur en 2,4 GHz : la bande n\'est pas la cause (autre endroit, autre moment, ou variations du réseau).')}}
   return{text:L.join('\n'),rooms:[...all],sessions:S.length};
 }
 module.exports={createJournal,cleanClientLog,summarize,evaluateDevice};

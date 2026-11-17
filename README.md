@@ -93,7 +93,15 @@ Sans certificat de signature de code, Windows SmartScreen affiche un avertisseme
 
 ## Tester un téléphone avant le culte
 
-Dans la fenêtre du PC, sur la carte d'une caméra dont le téléphone est connecté, touchez **Test rapide (5 min)** ou **Test complet (10 min)** (le test complet estime mieux la consommation de batterie). Laissez le téléphone diffuser sans y toucher. À la fin, un verdict s'affiche : **apte**, **apte sous conditions** (par exemple : à brancher sur secteur) ou **non apte**, avec les raisons et ce qu'il faut faire. Le test utilise les réglages actuels du téléphone ; pour comparer plusieurs téléphones, utilisez les mêmes (720p, netteté, H.264), un à la fois, au même endroit. Le verdict est noté dans le journal.
+Dans la fenêtre du PC, sur la carte d'une caméra dont le téléphone est connecté, touchez **Test rapide (5 min)** ou **Test complet (10 min)** (le test complet estime mieux la consommation de batterie). Laissez le téléphone diffuser sans y toucher. À la fin, un verdict s'affiche : **apte**, **apte sous conditions** (par exemple : à brancher sur secteur) ou **non apte**, avec les raisons et ce qu'il faut faire. Le test utilise les réglages actuels du téléphone ; pour comparer plusieurs téléphones, utilisez les mêmes (720p, netteté, H.264), un à la fois, au même endroit. Le verdict est noté dans le journal. Il est accompagné de la **cause probable** (le téléphone, le Wi-Fi 2,4 GHz, le réseau…) et de ce qu'il faut faire pour la confirmer. Pendant le test, le téléphone envoie environ 1 Mo vers le PC pour mesurer le débit réel du Wi-Fi.
+
+**Pour prouver si c'est la bande Wi-Fi :** testez le même téléphone, au même endroit, d'abord connecté au Wi-Fi 2,4 GHz, puis au 5 GHz. Le rapport (« Comparaison des tests du téléphone ») dit si la bande change le résultat. **Pour prouver si c'est le téléphone ou l'endroit :** testez le téléphone à l'endroit où un bon téléphone marchait bien.
+
+## Alerte Wi-Fi 2,4 GHz
+
+Si un téléphone est connecté au Wi-Fi 2,4 GHz et que la connexion est mauvaise pendant plus de 30 secondes, un encadré orange apparaît en haut de la fenêtre du PC. Touchez **Prévenir le téléphone** : la demande de passer au réseau 5 GHz s'affiche sur l'écran du téléphone, avec une vibration. Android ne permet pas de changer le Wi-Fi d'un téléphone à distance (depuis Android 10) : la personne qui tient le téléphone le change elle-même (Réglages, Wi-Fi). La carte de chaque caméra indique la bande utilisée et, si Android l'autorise, le nom du réseau. Saisissez une fois le **nom de votre réseau 5 GHz** dans le champ de la fenêtre du PC : il est affiché au téléphone dans la demande.
+
+**Nom du réseau Wi-Fi :** au premier lancement, l'application demande l'autorisation de localisation, uniquement parce qu'Android refuse sinon de donner le nom du réseau (la position n'est jamais lue). Choisissez « Position précise » et laissez la localisation du téléphone activée. Sans cela, tout fonctionne, seul le nom du réseau reste illisible.
 
 ## Journal du direct et rapport
 

@@ -95,3 +95,53 @@ assert(/Baissez la qualité/.test(fpsC.advice)&&!/éclairez/.test(fpsC.advice),'
  assert(!/c'est le téléphone/.test(summarize(Y2.read(1)).text),'latence élevée : pas accusé le téléphone à tort');}
 console.log('cadence caméra : ok');
 
+/* Cause probable : téléphone, Wi-Fi 2,4 GHz ou réseau */
+const kind=(o,info)=>evaluateDevice(mk(30,o),info||{drops:0}).cause.kind;
+assert.strictEqual(kind({}),'ok','bon téléphone : aucun problème');
+assert.strictEqual(kind({freq:2437,link:54,rtt:600,level:'bad'}),'wifi24','latence élevée en 2,4 GHz : le Wi-Fi 2,4 GHz');
+assert.strictEqual(kind({freq:5200,rtt:600,level:'bad'}),'network','latence élevée en 5 GHz : le réseau');
+assert.strictEqual(kind({freq:undefined,link:54,rtt:600,level:'bad'}),'wifi24','bande inconnue mais vitesse de liaison typique du 2,4 GHz');
+assert.strictEqual(kind({fps:12,cfps:12,rtt:20}),'phone','images lentes avec un bon réseau : le téléphone');
+assert.strictEqual(kind({fps:12,rtt:20,limit:'cpu',thermal:3}),'phone','processeur saturé : le téléphone');
+assert.strictEqual(kind({fps:12,cfps:12,rtt:600,level:'bad',freq:5200}),'mixed','les deux à la fois');
+assert.strictEqual(evaluateDevice(mk(30),{drops:0,speed:4}).cause.kind,'network','débit mesuré trop faible : le réseau');
+assert.strictEqual(evaluateDevice(mk(30),{drops:0,speed:4}).verdict,'non');
+assert.strictEqual(evaluateDevice(mk(30),{drops:0,speed:40}).cause.kind,'ok','bon débit : aucun problème');
+assert.strictEqual(evaluateDevice(mk(30),{drops:0,ipChanges:3}).cause.kind,'network','reconnexions Wi-Fi répétées : le réseau');
+assert(evaluateDevice(mk(30,{freq:2437,link:54,rtt:600,level:'bad'}),{drops:0}).cause.proof.includes('5 GHz'),'la preuve à faire est indiquée');
+assert.strictEqual(evaluateDevice(mk(30,{freq:2437,link:54}),{drops:0}).cause.kind,'ok','2,4 GHz mais tout fonctionne : pas accusé à tort');
+assert.strictEqual(evaluateDevice(mk(10),{}).cause.kind,'insuffisant','test trop court : pas de conclusion');
+console.log('cause probable : ok');
+
+/* Même téléphone testé sur 2,4 puis 5 GHz : la preuve ; suivi par identifiant malgré le changement d'adresse */
+{const d6=fs.mkdtempSync(path.join(os.tmpdir(),'j6-'));const Q=createJournal(d6),q0=now-3600e3;
+ Q.log('test-result',{room:'cam2',id:'abc123',ip:'192.168.1.165',verdict:'non',title:'Non apte au direct',band:'2,4',why:'Latence (600 ms)'},q0);
+ Q.log('test-result',{room:'cam2',id:'abc123',ip:'192.168.1.176',verdict:'apte',title:'Apte au direct',band:'5'},q0+1200000);
+ let x=summarize(Q.read(1)).text;
+ assert(/Comparaison des tests du téléphone \[id abc123\] : 2,4 GHz contre 5 GHz/.test(x)&&/PREUVE : le résultat est meilleur en 5 GHz/.test(x),'preuve de la bande');
+ const d7=fs.mkdtempSync(path.join(os.tmpdir(),'j7-'));const Q2=createJournal(d7);
+ Q2.log('test-result',{room:'cam2',id:'zzz999',verdict:'non',title:'Non apte au direct',band:'2,4'},q0);
+ Q2.log('test-result',{room:'cam2',id:'zzz999',verdict:'non',title:'Non apte au direct',band:'5'},q0+1200000);
+ x=summarize(Q2.read(1)).text;assert(/ne change pas avec la bande : la cause est ailleurs/.test(x),'la bande ne change rien : cause ailleurs');
+ const d8=fs.mkdtempSync(path.join(os.tmpdir(),'j8-'));const Q3=createJournal(d8);
+ Q3.log('join',{room:'cam2',role:'publisher',ip:'192.168.1.165',id:'kpc'},q0);Q3.log('join',{room:'cam2',role:'publisher',ip:'192.168.1.176',id:'kpc'},q0+60000);Q3.log('join',{room:'cam2',role:'publisher',ip:'192.168.1.165',id:'kpc'},q0+120000);
+ for(let i=0;i<30;i++){Q3.log('snap',{room:'cam2',pub:true,view:true,fps:25,rtt:30,level:'ok'},q0+5000+i*10000)}
+ x=summarize(Q3.read(1)).text;assert(/a changé d'adresse IP 2 fois/.test(x),'changements d\'adresse IP signalés par identifiant');}
+console.log('comparaison par identifiant : ok');
+
+/* Rapport : réseau Wi-Fi utilisé, alertes 2,4 GHz et demandes envoyées au téléphone */
+{const d9=fs.mkdtempSync(path.join(os.tmpdir(),'j9-'));const R=createJournal(d9),r0=now-3600e3;
+ R.log('join',{room:'cam2',role:'publisher',ip:'192.168.1.165',id:'kpc'},r0);
+ for(let i=0;i<30;i++)R.log('snap',{room:'cam2',pub:true,view:true,fps:15,rtt:600,level:'bad',freq:i<20?2437:5200,ssid:i<20?'Eglise-2G':'Eglise-5G',link:50},r0+5000+i*10000);
+ R.log('wifi24-alert',{room:'cam2',ip:'192.168.1.165',ssid:'Eglise-2G',guess:false},r0+40000);
+ R.log('notice-sent',{room:'cam2',kind:'wifi5'},r0+60000);
+ let x=summarize(R.read(1)).text;
+ assert(/Wi-Fi utilisé : « Eglise-2G » 2,4 GHz \(67 % du temps\) ; « Eglise-5G » 5 GHz \(33 % du temps\)/.test(x),'réseau et bande utilisés');
+ assert(/Alerte Wi-Fi 2,4 GHz déclenchée 1 fois/.test(x)&&/Le PC a prévenu le téléphone 1 fois/.test(x),'alerte et demande dans le diagnostic');
+ const d10=fs.mkdtempSync(path.join(os.tmpdir(),'j10-'));const R2=createJournal(d10);
+ R2.log('join',{room:'cam2',role:'publisher',ip:'192.168.1.165',id:'kpc'},r0);
+ for(let i=0;i<30;i++)R2.log('snap',{room:'cam2',pub:true,view:true,fps:15,rtt:600,level:'bad',freq:2437,link:50},r0+5000+i*10000);
+ R2.log('wifi24-alert',{room:'cam2',guess:false},r0+40000);
+ x=summarize(R2.read(1)).text;assert(/Personne n'a prévenu le téléphone depuis le PC/.test(x)&&/nom du réseau non lisible/.test(x),'aucune demande envoyée, nom du réseau non lisible signalés');}
+console.log('rapport Wi-Fi : ok');
+

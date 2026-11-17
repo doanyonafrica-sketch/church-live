@@ -145,11 +145,18 @@ dialog{border-color:rgba(232,196,122,.28);background:linear-gradient(#0c333a,#07
 #batalert{margin:0 0 16px;padding:14px 18px;border-radius:14px;border:1px solid var(--warn);background:rgba(242,194,96,.12);font:600 18px var(--serif)}
 #batalert.bad{border-color:var(--live);background:rgba(255,90,78,.16)}
 #batalert[hidden]{display:none}
+#wifialert{margin:0 0 16px;padding:14px 18px;border-radius:14px;border:1px solid var(--warn);background:rgba(242,194,96,.12)}
+#netset{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px;color:var(--mute);font-size:14px}
+#netset input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);color:var(--text);border-radius:8px;padding:6px 10px;font:inherit;min-width:12em}
+#wifialert[hidden]{display:none}#wifialert b{font:600 18px var(--serif);display:block;margin-bottom:6px}
+#wifialert .wr{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:15px}
+#wifialert small{display:block;margin-top:6px;color:var(--text);font-size:13px;line-height:1.4}
 #batalert small{display:block;font:400 14px/1.4 system-ui,sans-serif;margin-top:4px}
 .tbox{margin-top:12px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03)}
 .tbox small{display:block;color:var(--mute);margin:4px 0 8px;font-size:13px;line-height:1.4}
 .tbox ul{margin:6px 0 8px 18px;padding:0;font-size:14px;line-height:1.5}
 .tbox li.fail{color:var(--live)}.tbox li.warn{color:var(--warn)}.tbox li.ok{color:var(--ok)}
+.tbox .cause{margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.06);font-size:14px}.tbox .cause.ok{background:rgba(111,220,154,.1)}.tbox .cause ul{color:var(--text)}
 .tbox .adv{margin:8px 0;font-size:14px}.tbox .adv ul{color:var(--text)}
 .tbar{height:8px;border-radius:99px;background:rgba(255,255,255,.12);margin:8px 0}.tbar i{display:block;height:100%;border-radius:99px;background:var(--ok);transition:width .8s}
 .tv.ok{border-color:var(--ok)}.tv.cond{border-color:var(--warn)}.tv.non{border-color:var(--live)}
@@ -177,6 +184,8 @@ select:focus-visible,input[type=range]:focus-visible{outline:2px solid var(--war
 <div id="live">
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div>
 <div id="batalert" hidden role="alert"></div>
+<div id="wifialert" hidden role="alert"></div>
+<label id="netset" for="net5">Nom du réseau Wi-Fi 5 GHz, proposé aux téléphones en cas de problème <input id="net5" maxlength="32" placeholder="ex. Eglise-5G" autocomplete="off"></label>
 <div class="pair"><div class="tile" id="p"><span>Téléphone</span><b id="pt">En attente</b></div><div class="tile" id="o"><span>OBS</span><b id="ot">En attente</b></div><div class="tile nd" id="c"><span>Processeur du PC</span><b id="ct">—</b></div></div>
 <div class="sec" id="camsec" hidden><div class="sechead"><h2>État des caméras</h2><button class="btn sec2" id="det" aria-pressed="false">Détails techniques</button></div><div id="cams"></div></div>
 
@@ -279,9 +288,19 @@ function testHtml(t,x){
   if(t&&t.result){const r=t.result,cls={apte:'ok',conditions:'cond',non:'non',insuffisant:'insuf'}[r.verdict]||'insuf',ic={ok:'✓',warn:'⚠',fail:'✗'};
     return '<div class="tbox tv '+cls+'"><b class="tt">'+E(r.title)+'</b>'+(r.scope?'<small>'+E(r.scope)+'</small>':'')+(r.device?'<small>'+E(r.device)+'</small>':'')
       +'<ul>'+(r.checks||[]).map(c=>'<li class="'+E(c.status)+'">'+(ic[c.status]||'')+' <b>'+E(c.name)+'</b> : '+E(c.detail)+'</li>').join('')+'</ul>'
+      +(r.cause&&r.cause.kind!=='insuffisant'?'<div class="cause '+E(r.cause.kind)+'"><b>'+E(r.cause.title)+'</b>'+((r.cause.why||[]).length?'<ul>'+r.cause.why.map(w=>'<li>'+E(w)+'</li>').join('')+'</ul>':'')+(r.cause.proof?'<small>'+E(r.cause.proof)+'</small>':'')+'</div>':'')
       +((r.advice||[]).length?'<div class="adv"><b>À faire :</b><ul>'+r.advice.map(a=>'<li>'+E(a)+'</li>').join('')+'</ul></div>':'')+btn('start','Refaire (5 min)','sec2',5)+' '+btn('start','Refaire (10 min)','sec2',10)+'</div>'}
   if(x&&x.publisher)return '<div class="tbox"><b>Ce téléphone convient-il au direct ?</b><small>Un test de 5 minutes mesure la fluidité, la latence, les coupures, la chauffe et la batterie, avec les réglages actuels du téléphone. Le test de 10 minutes estime mieux la consommation de batterie. Pour comparer plusieurs téléphones, utilisez les mêmes réglages (720p, netteté, H.264).</small>'+btn('start','Test rapide (5 min)','',5)+' '+btn('start','Test complet (10 min)','sec2',10)+'</div>';
   return ''}
+/* Téléphones en Wi-Fi 2,4 GHz avec une mauvaise connexion : alerte en haut de la fenêtre, avec le bouton « Prévenir le téléphone » */
+function wifiAlert(rs){
+  const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const L=rs.filter(x=>x.wifi&&x.wifi.trouble);if(!L.length)return null;
+  const cam=k=>k==='main'?'Caméra 1':'Caméra '+String(k).replace(/^cam/,'').replace(/[^0-9a-z]/gi,''),hm=t=>{const d=new Date(t);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+  return{rooms:L.map(x=>x.room),html:'<b>Connexion mauvaise sur le Wi-Fi 2,4 GHz</b>'
+    +L.map(x=>'<div class="wr"><span>'+cam(x.room)+(x.wifi.ssid?' (réseau « '+E(x.wifi.ssid)+' »)':'')+(x.wifi.guess?' : probablement le 2,4 GHz (déduit de la vitesse de liaison)':'')+'</span><button class="btn" data-notice="'+E(x.room)+'">'+(x.wifi.noticed?'Prévenir à nouveau':'Prévenir le téléphone')+'</button>'+(x.wifi.noticed?'<span>demande envoyée à '+hm(x.wifi.noticed)+'</span>':'')+'</div>').join('')
+    +'<small>Android ne permet pas de changer le Wi-Fi d’un téléphone à distance. Le bouton affiche la demande sur l’écran du téléphone (avec une vibration) : la personne qui le tient doit passer sur le réseau 5 GHz (Réglages, Wi-Fi).</small>'}}
+const NOTIFIED={};
 function statHtml(x,st,vs){
   const n=x.room==='main'?1:String(x.room).replace('cam',''),v=verdict(x,st,vs);
   let h='<h3>Caméra '+esc(n)+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+'</h3>'
@@ -295,6 +314,7 @@ function statHtml(x,st,vs){
     t+='<div class="kv">'+kv('Image envoyée',st.res+' à '+st.fps+' i/s')+kv('Débit',st.mbps+' Mb/s')+kv('Compression',st.codec||'—')
       +kv('Latence réseau',st.rtt!=null?st.rtt+' ms':'—',st.rtt>150?'bad2':st.rtt>60?'warn2':'')+kv('Paquets perdus',st.loss+' %',st.loss>3?'bad2':st.loss>1?'warn2':'')
       +kv('Signal Wi-Fi',sig(st.rssi),st.rssi!=null&&st.rssi<-75?'warn2':'')+kv('Vitesse de liaison',st.link?st.link+' Mb/s':'—')
+      +kv('Réseau Wi-Fi',(x.wifi&&x.wifi.band?x.wifi.band+' GHz':'bande inconnue')+(x.wifi&&x.wifi.ssid?' · '+esc(x.wifi.ssid):''),x.wifi&&x.wifi.band==='2,4'?'warn2':'')
       +kv('Micro',st.muted?'Coupé':'Actif',st.muted?'warn2':'')+kv('Limité par',LIM[st.limit]||st.limit,st.limit&&st.limit!=='none'?'warn2':'')+'</div>';
     if(st.diag)t+='<p class="dg">'+esc(st.diag)+'</p>'}
   if(vs)t+='<div class="sub"><span>Ce que reçoit OBS</span><div class="kv">'+kv('Image reçue',vs.res+' à '+vs.fps+' i/s')+kv('Paquets perdus',vs.lost+' /s',vs.lost>0?'warn2':'')
@@ -359,6 +379,11 @@ $('cams').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!
 function cams(list){
   const rs=(list||[]).filter(x=>x.publisher||(x.stats&&x.stats.age<5000)).sort((a,b)=>a.room<b.room?-1:1);
   /* Alerte batterie : visible en haut de la fenêtre, pour ne pas dépendre d'un coup d'œil dans la carte de chaque caméra */
+  const wa=wifiAlert(rs),wb=$('wifialert');
+  if(wb){if(wa){if(wb._h!==wa.html){wb._h=wa.html;wb.innerHTML=wa.html}wb.hidden=false}else{wb.hidden=true;wb._h=''}}
+  for(const x of rs){const on=!!(x.wifi&&x.wifi.trouble);   /* notification Windows, une fois par épisode */
+    if(on&&!NOTIFIED[x.room]){NOTIFIED[x.room]=1;try{if(window.Notification&&Notification.permission==='granted')new Notification('TPR Live : Wi-Fi 2,4 GHz',{body:(x.room==='main'?'Caméra 1':'Caméra '+String(x.room).replace(/^cam/,''))+' : connexion mauvaise sur le 2,4 GHz. Prévenez la personne qui tient le téléphone.'})}catch{}}
+    else if(!on)NOTIFIED[x.room]=0}
   const lb=lowBat(rs),ba=$('batalert');
   if(ba){if(lb){ba.className=lb.cls;ba.innerHTML=lb.html;ba.hidden=false}else ba.hidden=true}
   $('camsec').hidden=!rs.length;
@@ -388,7 +413,12 @@ const b=$('banner'),ok=i.publishers&&i.viewers;b.className=ok?'ready':'wait';
 $('bt').textContent=ok?'Tout est prêt':i.publishers?'Téléphone connecté, OBS en attente':i.viewers?'OBS connecté, téléphone en attente':'En attente du téléphone et d\'OBS';
 $('bs').textContent=ok?'OBS reçoit l\'image du téléphone.':i.publishers?'Ajoutez la Source Navigateur dans OBS (adresse plus bas).':i.viewers?'Saisissez l\'adresse du PC dans l\'application du téléphone.':'Le serveur est en marche.'}
 /* Boutons du test d'aptitude (démarrer / arrêter) */
-document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-test]');if(!b)return;
+{const n5=$('net5');if(n5){try{n5.value=localStorage.net5||''}catch{}n5.addEventListener('input',()=>{try{localStorage.net5=n5.value}catch{}})}}   /* le nom du réseau 5 GHz est retenu entre deux lancements */
+document.addEventListener('click',()=>{try{if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}catch{}},{once:true});
+document.addEventListener('click',async e=>{
+  const nb=e.target.closest&&e.target.closest('[data-notice]');
+  if(nb){nb.disabled=true;try{const j=await (await fetch('/api/notice/'+encodeURIComponent(nb.dataset.notice),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({net5:(($('net5')&&$('net5').value)||'').trim()})})).json();nb.textContent=j.ok?'Demande envoyée':(j.error||'Erreur')}catch{nb.textContent='Erreur de communication'}return}
+  const b=e.target.closest&&e.target.closest('[data-test]');if(!b)return;
   b.disabled=true;
   try{const j=await (await fetch('/api/test/'+encodeURIComponent(b.dataset.room)+'/'+b.dataset.test,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b.dataset.min?{minutes:+b.dataset.min}:{})})).json();
     if(!j.ok){b.textContent=j.error||'Erreur';return}}catch{b.textContent='Erreur de communication'}});

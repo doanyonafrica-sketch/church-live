@@ -4,12 +4,13 @@ const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
 const {createJournal,cleanClientLog,summarize,evaluateDevice}=require('./journal');
 const RELAY=new Set(['offer','answer','candidate']);
 const NUM=['cam','fps','cfps','mbps','rtt','loss','sec','q','rssi','link','freq','battery','thermal','jitter','buf','dropped','lost'],
-  STR=['res','codec','limit','level','diag'],BOOL=['muted','charging'];
+  STR=['res','codec','limit','level','diag','ssid'],BOOL=['muted','charging'];
 /* Ne garde que les champs connus, avec des types simples (les statistiques viennent du réseau) */
 const clean=m=>{const o={};
   for(const k of NUM)if(typeof m[k]==='number'&&isFinite(m[k]))o[k]=m[k];
   for(const k of STR)if(typeof m[k]==='string')o[k]=m[k].replace(/[<>&"'`]/g,'').slice(0,200);
   for(const k of BOOL)if(typeof m[k]==='boolean')o[k]=m[k];
+  if(o.ssid)o.ssid=o.ssid.slice(0,32);
   o.t=Date.now();return o};
 /* Réglages du téléphone modifiables depuis le PC. Valeurs strictement vérifiées : le PC les envoie, le téléphone les revérifie. */
 const SETK={q:[480,720,1080],prio:['sharp','fluid'],fluid:['off','on','max'],codec:['auto','h264','vp8']};
@@ -70,6 +71,7 @@ function createServer(opts={}){
       cpu:cpuPct(),
       rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
         settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null,
+        wifi:x.stats?{band:typeof x.stats.freq==='number'&&x.stats.freq>0?(x.stats.freq<3000?'2,4':'5'):null,ssid:x.stats.ssid||null,link:x.stats.link==null?null:x.stats.link,trouble:!!x.w24,guess:!!x.w24guess,since:x.w24at||null,noticed:x.noticeAt||null}:null,
         test:x.test?{running:!x.test.result,elapsed:Math.min(Date.now()-x.test.t0,x.test.dur),dur:x.test.dur,drops:x.test.drops,result:x.test.result}:null}))});});
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Réglages envoyés par la fenêtre du PC à un téléphone. Réservé au PC lui-même (même protection que les caméras IP). */
@@ -81,6 +83,14 @@ function createServer(opts={}){
     if(!x.settings)return r.status(409).json({ok:false,error:'Ce téléphone doit être mis à jour pour être réglé depuis le PC.'});
     send(x.publisher,{type:'set',set});jlog('remote-set',{room:String(q.params.room).slice(0,64),...set});r.json({ok:true,sent:set})});
   app.use('/api/phone',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
+  /* « Prévenir le téléphone » : affiche sur son écran la demande de passer au Wi-Fi 5 GHz. Android ne permet pas de changer le Wi-Fi à distance. */
+  app.post('/api/notice/:room',express.json({limit:'1kb'}),(q,r)=>{
+    if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
+    const room=String(q.params.room).slice(0,64),x=rooms.get(room);
+    if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
+    const net5=q.body&&typeof q.body.net5==='string'?q.body.net5.replace(/[<>&"'`]/g,'').trim().slice(0,32):'';   /* nom du réseau 5 GHz saisi sur le PC */
+    send(x.publisher,{type:'notice',kind:'wifi5',net5});x.noticeAt=Date.now();jlog('notice-sent',{room,kind:'wifi5',ip:x.publisher._ip,net5});r.json({ok:true})});
+  app.use('/api/notice',(e,q,r,n)=>r.status(400).json({ok:false,error:'Requête illisible.'}));
   /* Test d'aptitude d'un téléphone : 5 minutes de mesures puis un verdict. Réservé au PC lui-même. */
   app.post('/api/test/:room/:action',express.json({limit:'1kb'}),(q,r)=>{
     if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
@@ -88,8 +98,11 @@ function createServer(opts={}){
     if(q.params.action==='start'){
       if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
       const mins=q.body&&[5,10].includes(+q.body.minutes)?+q.body.minutes:5;   /* test rapide (5 min) ou complet (10 min) */
-      x.test={t0:Date.now(),dur:opts.testMs||mins*60000,snaps:[],drops:0,result:null};
-      jlog('test-start',{room,ip:x.publisher._ip});return r.json({ok:true})}
+      x.test={t0:Date.now(),dur:opts.testMs||mins*60000,snaps:[],drops:0,result:null,ip:x.publisher._ip,ipChanges:0,speed:null,id:String(x.publisher.cid||'').slice(0,6)};
+      jlog('test-start',{room,ip:x.publisher._ip,id:x.test.id});
+      /* quelques secondes après le début (période non comptée), le téléphone envoie ~1 Mo en rafale : débit réel du Wi-Fi vers le PC, sans vidéo */
+      setTimeout(()=>{if(x.test&&!x.test.result&&live(x.publisher))send(x.publisher,{type:'speedtest'})},Math.min(5000,Math.floor(x.test.dur/10)));
+      return r.json({ok:true})}
     if(q.params.action==='stop'){
       if(!x||!x.test)return r.status(404).json({ok:false,error:'Aucun test en cours.'});
       finishTest(room,x);return r.json({ok:true})}
@@ -115,11 +128,16 @@ function createServer(opts={}){
   const finishTest=(k,x)=>{
     if(!x.test||x.test.result)return;
     const T=x.test,d=x.device||{},m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||''),device=(m?m[1].replace(/ Build\/.*/,''):'')+(d.cores?(m?', ':'')+d.cores+' cœurs':'');
-    T.result=evaluateDevice(T.snaps,{drops:T.drops,device});T.done=Date.now();
-    const f=T.result.fig;jlog('test-result',{room:k,ip:x.publisher&&x.publisher._ip,verdict:T.result.verdict,title:T.result.title,quality:f.quality,fps:f.fps,rtt:f.rtt50,loss:f.loss,bad:f.bad,drops:f.drops,model:device,why:T.result.why})};
+    T.result=evaluateDevice(T.snaps,{drops:T.drops,device,speed:T.speed,ipChanges:T.ipChanges});T.done=Date.now();
+    const f=T.result.fig;jlog('test-result',{room:k,ip:T.ip,id:T.id,verdict:T.result.verdict,title:T.result.title,quality:f.quality,band:f.band,speed:f.speed,ckind:(T.result.cause||{}).kind,cause:(T.result.cause||{}).title,fps:f.fps,rtt:f.rtt50,loss:f.loss,bad:f.bad,drops:f.drops,model:device,why:T.result.why})};
   const snapT=setInterval(()=>{for(const [k,x] of rooms){const pub=live(x.publisher),view=live(x.viewer);
-    const st=x.stats||{},vs=x.vstats||{},row={room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,cfps:st.cfps,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,charging:st.charging,codec:st.codec,rssi:st.rssi,link:st.link,freq:st.freq,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf};
+    const st=x.stats||{},vs=x.vstats||{},row={room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,cfps:st.cfps,ssid:st.ssid,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,charging:st.charging,codec:st.codec,rssi:st.rssi,link:st.link,freq:st.freq,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf};
     if(J&&(pub||view))J.log('snap',row);
+    /* Alerte Wi-Fi : téléphone en 2,4 GHz (ou vitesse typique du 2,4 GHz si la bande est inconnue) avec une mauvaise connexion depuis 30 s */
+    const is24=typeof st.freq==='number'&&st.freq>0&&st.freq<3000,g24=typeof st.freq!=='number'&&typeof st.link==='number'&&st.link>0&&st.link<=72;
+    const trouble=pub&&(is24||g24)&&(st.level==='bad'||(typeof st.rtt==='number'&&st.rtt>300)||(typeof st.fps==='number'&&st.fps<20));
+    x.w24n=trouble?(x.w24n||0)+1:0;const was=!!x.w24;x.w24=x.w24n>=3;x.w24guess=x.w24&&g24;
+    if(x.w24&&!was){x.w24at=Date.now();jlog('wifi24-alert',{room:k,ip:x.publisher&&x.publisher._ip,ssid:st.ssid,link:st.link,rtt:st.rtt,fps:st.fps,guess:g24})}
     if(x.test&&!x.test.result){if(pub)x.test.snaps.push({...row,t:Date.now()});if(Date.now()>=x.test.t0+x.test.dur)finishTest(k,x)}}},opts.snapMs||10000);snapT.unref();
   const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{jlog('server-stop',{});clearInterval(snapT);clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
   /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
@@ -156,7 +174,8 @@ function createServer(opts={}){
         const r=rooms.get(room)||{t:{}};rooms.set(room,r);
         if(r.t[role]){clearTimeout(r.t[role]);delete r.t[role]}   /* retour rapide : on annule l'annonce de départ */
         const old=r[role];r[role]=ws;if(old&&old!==ws)old.close(4000,'replaced');
-        jlog('join',{room,role,ip,how:old&&old!==ws?'takeover':(r.t[role]===undefined&&r.seen&&r.seen[role]?'resume':'new'),id:cid.slice(0,6)});(r.seen||(r.seen={}))[role]=true;  /* 4000 : remplacé par le même appareil, ne pas se reconnecter */
+        jlog('join',{room,role,ip,how:old&&old!==ws?'takeover':(r.t[role]===undefined&&r.seen&&r.seen[role]?'resume':'new'),id:cid.slice(0,6)});(r.seen||(r.seen={}))[role]=true;
+        if(role==='publisher'&&r.test&&!r.test.result){if(r.test.ip&&r.test.ip!==ip)r.test.ipChanges=(r.test.ipChanges||0)+1;r.test.ip=ip}   /* changement d'adresse = reconnexion au Wi-Fi */  /* 4000 : remplacé par le même appareil, ne pas se reconnecter */
         if(role==='viewer'){r.active=m.active===true;r.onair=m.onair===true;send(r.publisher,{type:'viewer-joined',keep:r.active});send(r.publisher,{type:'onair',value:r.onair})}
         else{if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});send(ws,{type:'onair',value:live(r.viewer)&&!!r.onair})}  /* le téléphone connaît tout de suite son statut */
         return;
@@ -166,6 +185,11 @@ function createServer(opts={}){
       const r=rooms.get(room);if(!r)return;
       /* OBS demande une nouvelle négociation (image absente alors que le téléphone se croit connecté) */
       if(m.type==='need-offer'){if(role==='viewer'){if(live(r.publisher)){jlog('need-offer',{room});send(r.publisher,{type:'viewer-joined',keep:false})}else send(ws,{type:'no-phone'})}return}
+      if(m.type==='speed'){if(role==='publisher'){const S=r.speedRun||(r.speedRun={t0:Date.now(),first:d.length,bytes:0,n:0});S.bytes+=d.length;S.n++;S.t1=Date.now()}return}
+      if(m.type==='speed-end'){if(role==='publisher'&&r.speedRun){const S=r.speedRun;r.speedRun=null;
+        const ms=Math.max(1,S.t1-S.t0),mbps=S.n>1?Math.min(500,Math.round((S.bytes-S.first)*8/ms/1000*10)/10):null;   /* le premier message sert de départ : on mesure le reste */
+        if(mbps!=null&&r.test&&!r.test.result)r.test.speed=mbps;
+        jlog('speedtest',{room,ip:ws._ip,mbps,ms,kb:Math.round(S.bytes/1024)});send(ws,{type:'speed-result',mbps,ms})}return}
       if(m.type==='log'){for(const it of cleanClientLog(m,Date.now())){const{t,ev,...d}=it;if(J)J.log('c:'+ev,{...d,room,role},t);if(role==='publisher'&&ev==='device')r.device={ua:d.ua,cores:d.cores,ram:d.ram}}return}
       if(m.type==='active'){if(role==='viewer')r.active=!!m.value;return}
       /* « à l'antenne » : OBS dit si cette caméra est dans le programme ET reçue. Seul OBS (viewer) peut l'affirmer. */

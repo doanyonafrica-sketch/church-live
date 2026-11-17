@@ -2,7 +2,7 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../public/control.html'),'utf8');
 const slice=(a,b)=>{const i=html.indexOf(a),j=html.indexOf(b,i);assert(i>=0&&j>i,'repère introuvable : '+a);return html.slice(i,j)};
-const ctx=vm.runInContext(slice('const hq=','function statHtml(')+';({hq,conn,verdict,lowBat,testHtml})',vm.createContext({}));
+const ctx=vm.runInContext(slice('const hq=','function statHtml(')+';({hq,conn,verdict,lowBat,testHtml,wifiAlert})',vm.createContext({}));
 
 /* définition en mots */
 assert.strictEqual(ctx.hq('1920×1080'),'Full HD 1080p');assert.strictEqual(ctx.hq('1280×720'),'HD 720p');assert.strictEqual(ctx.hq('854×480'),'480p');assert.strictEqual(ctx.hq(''),'—');
@@ -40,5 +40,17 @@ let th=ctx.testHtml(null,{room:'main',publisher:true});assert(/data-test="start"
 th=ctx.testHtml({running:true,elapsed:125000,dur:300000,drops:1},{room:'cam2',publisher:true});assert(/2:05 \/ 5:00/.test(th)&&/width:42%/.test(th)&&/data-test="stop"/.test(th)&&/1 coupure/.test(th),'progression et arrêt');
 th=ctx.testHtml({running:false,result:{verdict:'non',title:'Non apte au direct',scope:'Testé en 720p. ',device:'moto g pure',checks:[{status:'fail',name:'Fluidité',detail:'12 images/s'},{status:'ok',name:'Pertes',detail:'0 %'}],advice:['Baissez la qualité.']}},{room:'cam2',publisher:true});
 assert(/tv non/.test(th)&&/Non apte au direct/.test(th)&&/✗ <b>Fluidité/.test(th)&&/✓ <b>Pertes/.test(th)&&/Baissez la qualité/.test(th)&&/Refaire \(5 min\)/.test(th)&&/Refaire \(10 min\)/.test(th),'carte du verdict');
-th=ctx.testHtml({running:false,result:{verdict:'apte',title:'<img src=x onerror=alert(1)>',checks:[],advice:[]}},{room:'<b>x</b>',publisher:true});assert(!/<img|<b>x/.test(th),'aucune injection de HTML');
+th=ctx.testHtml({running:false,result:{verdict:'non',title:'Non apte au direct',checks:[],advice:[],cause:{kind:'wifi24',title:'Cause probable : le Wi-Fi 2,4 GHz',why:['bande 2,4 GHz (100 % du temps)','latence typique 480 ms'],proof:'Preuve à faire : refaites le test sur le 5 GHz.'}}},{room:'cam2',publisher:true});
+assert(/class="cause wifi24"/.test(th)&&/Cause probable : le Wi-Fi 2,4 GHz/.test(th)&&/bande 2,4 GHz/.test(th)&&/Preuve à faire/.test(th),'cause probable affichée avec ses preuves');
+th=ctx.testHtml({running:false,result:{verdict:'insuffisant',title:'Test trop court',checks:[],advice:['Relancez.'],cause:{kind:'insuffisant',title:'Test trop court : pas de conclusion possible',why:[],proof:''}}},{room:'cam2',publisher:true});
+assert(!/class="cause/.test(th),'test trop court : pas de cadre « cause »');
+th=ctx.testHtml({running:false,result:{verdict:'apte',title:'<img src=x onerror=alert(1)>',checks:[],advice:[],cause:{kind:'ok',title:'<script>x</script>',why:['<b>y</b>'],proof:''}}},{room:'<b>x</b>',publisher:true});assert(!/<img|<b>x|<script>|<b>y/.test(th),'aucune injection de HTML');
+/* alerte Wi-Fi 2,4 GHz : bouton « Prévenir le téléphone » */
+const wr=(room,w)=>({room,wifi:w});
+assert.strictEqual(ctx.wifiAlert([wr('main',{band:'5',trouble:false}),wr('cam2',null)]),null,'pas de problème, pas d\'alerte');
+let wa=ctx.wifiAlert([wr('main',{band:'5',trouble:false}),wr('cam2',{band:'2,4',ssid:'Eglise-2G',trouble:true})]);
+assert(wa&&wa.rooms.length===1&&wa.rooms[0]==='cam2'&&/Caméra 2/.test(wa.html)&&/Eglise-2G/.test(wa.html)&&/data-notice="cam2"/.test(wa.html)&&/Prévenir le téléphone/.test(wa.html)&&/Android ne permet pas/.test(wa.html),'alerte pour la caméra 2 avec son bouton');
+wa=ctx.wifiAlert([wr('main',{band:'2,4',trouble:true,noticed:Date.now()})]);assert(/Caméra 1/.test(wa.html)&&/Prévenir à nouveau/.test(wa.html)&&/demande envoyée à \d\d:\d\d/.test(wa.html),'demande déjà envoyée : heure et nouveau bouton');
+wa=ctx.wifiAlert([wr('cam3',{band:null,trouble:true,guess:true})]);assert(/probablement le 2,4 GHz/.test(wa.html),'bande déduite signalée');
+wa=ctx.wifiAlert([wr('<b>x</b>',{trouble:true,ssid:'<img src=x onerror=alert(1)>'})]);assert(!/<img|<b>x/.test(wa.html),'aucune injection de HTML');
 console.log('OK vue simple du PC (états, connexion en mots)');

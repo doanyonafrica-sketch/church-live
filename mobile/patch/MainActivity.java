@@ -62,6 +62,8 @@ public class MainActivity extends BridgeActivity {
                     if (ls > 0) o.put("link", ls);
                     int fq = wi.getFrequency();   /* en MHz : 2412 à 2484 = bande 2,4 GHz, 5170 et plus = bande 5 GHz */
                     if (fq > 0) o.put("freq", fq);
+                    String ss = wi.getSSID();   /* Android ne donne le nom qu'avec l'autorisation de localisation : sinon « <unknown ssid> », qu'on ignore */
+                    if (ss != null && !ss.contains("unknown")) o.put("ssid", ss.replace("\"", ""));
                 }
             } catch (Throwable ignored) {
             }
@@ -258,9 +260,20 @@ public class MainActivity extends BridgeActivity {
         } catch (Throwable ignored) {
         }
         try {
-            /* Android 13+ : autorisation d'afficher la notification « Direct en cours ». Le service fonctionne même si elle est refusée. */
-            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7101);
+            /* Autorisations demandées en une seule fenêtre : la notification « Direct en cours » (Android 13+, le service fonctionne même si elle est refusée)
+               et la localisation, uniquement pour que le PC puisse lire le NOM du réseau Wi-Fi (Android refuse de le donner sans elle).
+               La position de l'appareil n'est jamais lue. Pour que le nom apparaisse : choisir « Position précise » et laisser la localisation du téléphone activée. */
+            if (Build.VERSION.SDK_INT >= 23) {
+                ArrayList<String> need = new ArrayList<String>();
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                    need.add("android.permission.POST_NOTIFICATIONS");
+                }
+                if (checkSelfPermission("android.permission.ACCESS_FINE_LOCATION") != PackageManager.PERMISSION_GRANTED) {
+                    need.add("android.permission.ACCESS_FINE_LOCATION");
+                }
+                if (!need.isEmpty()) {
+                    requestPermissions(need.toArray(new String[0]), 7101);
+                }
             }
         } catch (Throwable ignored) {
         }

@@ -2,8 +2,11 @@
 const assert=require('assert'),WebSocket=require('ws'),http=require('http'),fs=require('fs'),os=require('os'),path=require('path');
 const {createServer}=require('../server');
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-const open=(port,role,room)=>new Promise(r=>{const w=new WebSocket('ws://127.0.0.1:'+port+'/ws');w.q=[];w.on('message',d=>w.q.push(JSON.parse(d)));
-  w.on('open',()=>{w.send(JSON.stringify({type:'join',role,room}));r(w)})});
+/* faux téléphone ; s'il est « speedy », il répond à la demande d'essai de débit comme la vraie application */
+const open=(port,role,room,id,opt)=>new Promise(r=>{const w=new WebSocket('ws://127.0.0.1:'+port+'/ws',opt||{});w.q=[];
+  w.on('message',d=>{const m=JSON.parse(d);w.q.push(m);
+    if(m.type==='speedtest'&&w.speedy){const pad='x'.repeat(80000);for(let i=0;i<12;i++)w.send(JSON.stringify({type:'speed',i,pad}));w.send(JSON.stringify({type:'speed-end'}))}});
+  w.on('open',()=>{w.send(JSON.stringify({type:'join',role,room,id}));r(w)})});
 const req=(port,method,p,body,headers={})=>new Promise(res=>{
   const data=body===undefined?null:JSON.stringify(body);
   const q=http.request({host:'127.0.0.1',port,path:p,method,headers:{...(data?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)}:{}),...headers}},r=>{let b='';r.on('data',d=>b+=d);r.on('end',()=>{let j=null;try{j=JSON.parse(b)}catch{}res({status:r.statusCode,json:j})})});
@@ -22,7 +25,7 @@ const room=(info,r)=>info.json.rooms.find(x=>x.room===r);
 
   /* bon téléphone : verdict « apte » */
   const p=await open(port,'publisher','camA');p.send(JSON.stringify({type:'log',items:[{ev:'device',d:{ua:'Mozilla/5.0 (Linux; Android 10; moto g pure Build/QPH30) Chrome',cores:8,ram:4},ago:0}]}));
-  const feed=setInterval(()=>{if(p.readyState===1)p.send(JSON.stringify(good))},20);
+  p.speedy=true;const feed=setInterval(()=>{if(p.readyState===1)p.send(JSON.stringify(good))},20);
   await wait(150);
   r=await start('camA');assert(r.status===200&&r.json.ok,'test démarré');
   await wait(200);let info=await req(port,'GET','/info');let t=room(info,'camA').test;
@@ -32,6 +35,8 @@ const room=(info,r)=>info.json.rooms.find(x=>x.room===r);
   assert(t&&!t.running&&t.result,'test terminé');
   assert.strictEqual(t.result.verdict,'apte','bon téléphone branché : apte, obtenu '+t.result.verdict+' '+JSON.stringify(t.result.checks.filter(c=>c.status!=='ok')));
   assert(/moto g pure/.test(t.result.device),'modèle du téléphone repris dans le verdict');
+  assert(t.result.fig.speed>=1&&t.result.checks.some(c=>c.key==='speed'&&c.status==='ok'),'débit vers le PC mesuré pendant le test (obtenu '+t.result.fig.speed+')');
+  assert(t.result.cause&&t.result.cause.kind==='ok'&&t.result.fig.band==='5','bon téléphone : aucun problème, bande 5 GHz');
   clearInterval(feed);p.close();await wait(100);
 
   /* mauvais téléphone : « non apte », avec conseils */
@@ -40,6 +45,7 @@ const room=(info,r)=>info.json.rooms.find(x=>x.room===r);
   r=await start('camB');assert(r.json.ok);await wait(2400);
   info=await req(port,'GET','/info');t=room(info,'camB').test;
   assert(t.result&&t.result.verdict==='non'&&t.result.advice.length>0,'téléphone qui rame : non apte avec conseils');
+  assert(t.result.cause.kind==='network'&&t.result.cause.proof,'latence élevée en 5 GHz : cause réseau, avec la preuve à faire');
   clearInterval(feedB);b.close();await wait(100);
 
   /* coupure pendant le test : comptée */
@@ -56,6 +62,16 @@ const room=(info,r)=>info.json.rooms.find(x=>x.room===r);
   r=await req(port,'POST','/api/test/camC/boum',{});assert(r.status===400,'action inconnue refusée');
   clearInterval(feedC2);c2.close();
 
+  /* changement d'adresse IP pendant un test = reconnexion au Wi-Fi : détecté et compté */
+  const e1=await open(port,'publisher','camE','tel001');e1.speedy=true;const feedE1=setInterval(()=>{if(e1.readyState===1)e1.send(JSON.stringify(good))},20);await wait(150);
+  r=await start('camE');assert(r.json.ok);await wait(300);
+  clearInterval(feedE1);
+  const e2=await open(port,'publisher','camE','tel001',{localAddress:'127.0.0.2'});e2.speedy=true;const feedE2=setInterval(()=>{if(e2.readyState===1)e2.send(JSON.stringify(good))},20);
+  await wait(2400);info=await req(port,'GET','/info');t=room(info,'camE').test;
+  assert(t&&t.result,'test terminé après le changement d\'adresse');
+  const ipc=t.result.checks.find(c=>c.key==='ip');assert(ipc&&ipc.status==='warn'&&t.result.fig.ipChanges===1,'un changement d\'adresse IP compté ('+JSON.stringify(ipc)+')');
+  clearInterval(feedE2);e2.close();await wait(100);
+
   /* durée choisie : 5 min par défaut, 10 min sur demande, autre valeur ignorée */
   const srv2=createServer({grace:300,cameras:false});await new Promise(r=>srv2.listen(0,'127.0.0.1',r));const port2=srv2.address().port;
   const d=await open(port2,'publisher','camD');await wait(100);
@@ -70,5 +86,7 @@ const room=(info,r)=>info.json.rooms.find(x=>x.room===r);
   const files=fs.readdirSync(path.join(dir,'journal'));const lines=fs.readFileSync(path.join(dir,'journal',files[0]),'utf8').split('\n').filter(Boolean).map(l=>JSON.parse(l));
   assert(lines.some(l=>l.ev==='test-start'&&l.room==='camA'),'début de test journalisé');
   const tr=lines.filter(l=>l.ev==='test-result');assert(tr.length>=3&&tr.some(l=>l.room==='camA'&&l.verdict==='apte')&&tr.some(l=>l.room==='camB'&&l.verdict==='non'),'verdicts journalisés');
+  assert(tr.some(l=>l.room==='camA'&&l.band==='5'&&l.ckind==='ok'&&typeof l.speed==='number'),'bande, cause et débit journalisés');
+  assert(lines.some(l=>l.ev==='speedtest'&&l.room==='camA'&&l.mbps>0),'essai de débit journalisé');
   srv.close();console.log('OK test d\'aptitude (démarrage, verdicts, coupures, arrêt, protection, journal)');process.exit(0);
 })().catch(e=>{console.error('ÉCHEC',e);process.exit(1)});
