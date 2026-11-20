@@ -1,7 +1,7 @@
 const express=require('express'),http=require('http'),os=require('os'),path=require('path'),fs=require('fs'),crypto=require('crypto');
 const {WebSocketServer}=require('ws');
 const {isLocalAddr,hostOk,originOk,localRequestOk}=require('./security');
-const {createJournal,cleanClientLog,summarize,evaluateDevice}=require('./journal');
+const {createJournal,cleanClientLog,summarize,evaluateDevice,evaluateQuick}=require('./journal');
 const {scanPC,fromPhone,mergeNetworks}=require('./wifi');
 const RELAY=new Set(['offer','answer','candidate']);
 const NUM=['cam','fps','cfps','mbps','rtt','loss','sec','q','rssi','link','freq','battery','thermal','jitter','buf','dropped','lost'],
@@ -70,6 +70,7 @@ function createServer(opts={}){
     if(!localRequestOk(q))return r.status(403).json({ok:false,error:'Réservé au PC qui exécute TPR Live.'});
     try{opts.onFlash&&opts.onFlash()}catch{}
     r.json({ok:true})});
+  const autoStep=opts.autoStepMs||2000,autoN=opts.autoN||30;   /* contrôle automatique à la connexion : une mesure toutes les 2 s pendant 1 minute */
   app.get('/info',(q,r)=>{
     /* Un appareil du réseau ne voit que ce qu'il faut pour retrouver le PC (la recherche automatique du téléphone) */
     if(!isLocalAddr(q.socket.remoteAddress)||!hostOk(q.headers.host)||!originOk(q.headers.origin,q.headers.host,true))return r.json({app:'tpr-live',name:os.hostname().replace(/[^\w .-]/g,'').slice(0,40)||'PC',pin:!!PIN});
@@ -81,7 +82,7 @@ function createServer(opts={}){
       rooms:[...rooms.entries()].map(([k,x])=>({room:k,publisher:live(x.publisher),viewer:live(x.viewer),onair:live(x.viewer)&&!!x.onair,
         settings:x.settings?{...x.settings,age:Date.now()-x.settings.t}:null,stats:x.stats?{...x.stats,age:Date.now()-x.stats.t}:null,vstats:x.vstats?{...x.vstats,age:Date.now()-x.vstats.t}:null,
         wifi:x.stats?{band:typeof x.stats.freq==='number'&&x.stats.freq>0?(x.stats.freq<3000?'2,4':'5'):null,ssid:x.stats.ssid||null,link:x.stats.link==null?null:x.stats.link,trouble:!!x.w24,guess:!!x.w24guess,since:x.w24at||null,noticed:x.noticeAt||null}:null,
-        test:x.test?{running:!x.test.result,elapsed:Math.min(Date.now()-x.test.t0,x.test.dur),dur:x.test.dur,drops:x.test.drops,result:x.test.result}:null}))});});
+        test:x.test?{running:!x.test.result,elapsed:Math.min(Date.now()-x.test.t0,x.test.dur),dur:x.test.dur,drops:x.test.drops,result:x.test.result}:null,auto:x.auto?{running:!x.auto.result,elapsed:Math.min(x.auto.samples.length*autoStep,autoStep*autoN),dur:autoStep*autoN,drops:x.auto.drops,done:x.auto.done||null,result:x.auto.result}:null}))});});
   const send=(w,m)=>live(w)&&w.send(JSON.stringify(m));
   /* Réglages envoyés par la fenêtre du PC à un téléphone. Réservé au PC lui-même (même protection que les caméras IP). */
   app.post('/api/phone/:room/set',express.json({limit:'2kb'}),(q,r)=>{
@@ -134,6 +135,7 @@ function createServer(opts={}){
     if(q.params.action==='start'){
       if(!x||!live(x.publisher))return r.status(404).json({ok:false,error:'Téléphone non connecté.'});
       const mins=q.body&&[5,10].includes(+q.body.minutes)?+q.body.minutes:5;   /* test rapide (5 min) ou complet (10 min) */
+      if(x.auto&&!x.auto.result)x.auto=null;   /* le test complet remplace le contrôle automatique en cours */
       x.test={t0:Date.now(),dur:opts.testMs||mins*60000,snaps:[],drops:0,result:null,ip:x.publisher._ip,ipChanges:0,speed:null,id:String(x.publisher.cid||'').slice(0,6)};
       jlog('test-start',{room,ip:x.publisher._ip,id:x.test.id});
       /* quelques secondes après le début (période non comptée), le téléphone envoie ~1 Mo en rafale : débit réel du Wi-Fi vers le PC, sans vidéo */
@@ -166,6 +168,16 @@ function createServer(opts={}){
     const T=x.test,d=x.device||{},m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||''),device=(m?m[1].replace(/ Build\/.*/,''):'')+(d.cores?(m?', ':'')+d.cores+' cœurs':'');
     T.result=evaluateDevice(T.snaps,{drops:T.drops,device,speed:T.speed,ipChanges:T.ipChanges});T.done=Date.now();
     const f=T.result.fig;jlog('test-result',{room:k,ip:T.ip,id:T.id,verdict:T.result.verdict,title:T.result.title,quality:f.quality,band:f.band,speed:f.speed,ckind:(T.result.cause||{}).kind,cause:(T.result.cause||{}).title,fps:f.fps,rtt:f.rtt50,loss:f.loss,bad:f.bad,drops:f.drops,model:device,why:T.result.why})};
+  /* Contrôle automatique : toutes les 2 s on note les mesures du téléphone qui vient de se connecter ; après 1 minute, verdict comparé à la caméra 1 */
+  const finishAuto=(k,x)=>{
+    const A=x.auto;if(!A||A.result)return;
+    const d=x.device||{},m=/Android [\d.]+; ([^)]*)\)/.exec(d.ua||''),device=(m?m[1].replace(/ Build\/.*/,''):'')+(d.cores?(m?', ':'')+d.cores+' cœurs':''),last=A.samples[A.samples.length-1]||{};
+    A.result=evaluateQuick(A.samples,{drops:A.drops,device,step:autoStep/1000,ua:d.ua,ram:d.ram,cores:d.cores,battery:last.battery,charging:last.charging});A.done=Date.now();
+    jlog('auto-result',{room:k,ip:A.ip,id:A.id,verdict:A.result.verdict,title:A.result.title,model:device,why:A.result.why})};
+  const autoT=setInterval(()=>{for(const [k,x] of rooms){const A=x.auto;if(!A||A.result||!live(x.publisher))continue;
+    const st=x.stats;if(!st||Date.now()-st.t>5000)continue;
+    A.samples.push({t:Date.now(),fps:st.fps,rtt:st.rtt,loss:st.loss,res:st.res,cfps:st.cfps,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,charging:st.charging,freq:st.freq,link:st.link,rssi:st.rssi});
+    if(A.samples.length>=autoN)finishAuto(k,x)}},autoStep);autoT.unref();
   const snapT=setInterval(()=>{for(const [k,x] of rooms){const pub=live(x.publisher),view=live(x.viewer);
     const st=x.stats||{},vs=x.vstats||{},row={room:k,pub,view,onair:view&&!!x.onair,fps:st.fps,mbps:st.mbps,rtt:st.rtt,loss:st.loss,res:st.res,cfps:st.cfps,ssid:st.ssid,limit:st.limit,level:st.level,thermal:st.thermal,battery:st.battery,charging:st.charging,codec:st.codec,rssi:st.rssi,link:st.link,freq:st.freq,vfps:vs.fps,vdropped:vs.dropped,vlost:vs.lost,vjitter:vs.jitter,vbuf:vs.buf};
     if(J&&(pub||view))J.log('snap',row);
@@ -175,7 +187,7 @@ function createServer(opts={}){
     x.w24n=trouble?(x.w24n||0)+1:0;const was=!!x.w24;x.w24=x.w24n>=3;x.w24guess=x.w24&&g24;
     if(x.w24&&!was){x.w24at=Date.now();jlog('wifi24-alert',{room:k,ip:x.publisher&&x.publisher._ip,ssid:st.ssid,link:st.link,rtt:st.rtt,fps:st.fps,guess:g24})}
     if(x.test&&!x.test.result){if(pub)x.test.snaps.push({...row,t:Date.now()});if(Date.now()>=x.test.t0+x.test.dur)finishTest(k,x)}}},opts.snapMs||10000);snapT.unref();
-  const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{jlog('server-stop',{});clearInterval(snapT);clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
+  const hb2=setInterval(()=>{if(fails.size>500)fails.clear()},60000);hb2.unref();srv.on('close',()=>{jlog('server-stop',{});clearInterval(snapT);clearInterval(autoT);clearInterval(hb);clearInterval(hb2);wss.close();if(cams)cams.close()});
   /* Arrêt immédiat : tue ffmpeg (sinon il reste actif et bloque la mise à jour) et coupe les connexions */
   /* Nombre de téléphones en direct : le PC s'en sert pour demander confirmation avant de quitter et pour ne pas se mettre à jour pendant un direct */
   srv.liveCount=()=>[...rooms.values()].filter(x=>live(x.publisher)).length;
@@ -210,8 +222,10 @@ function createServer(opts={}){
         const r=rooms.get(room)||{t:{}};rooms.set(room,r);
         if(r.t[role]){clearTimeout(r.t[role]);delete r.t[role]}   /* retour rapide : on annule l'annonce de départ */
         const old=r[role];r[role]=ws;if(old&&old!==ws)old.close(4000,'replaced');
-        jlog('join',{room,role,ip,how:old&&old!==ws?'takeover':(r.t[role]===undefined&&r.seen&&r.seen[role]?'resume':'new'),id:cid.slice(0,6)});(r.seen||(r.seen={}))[role]=true;
+        const how=old&&old!==ws?'takeover':(r.t[role]===undefined&&r.seen&&r.seen[role]?'resume':'new');jlog('join',{room,role,ip,how,id:cid.slice(0,6)});(r.seen||(r.seen={}))[role]=true;
         if(role==='publisher'&&r.test&&!r.test.result){if(r.test.ip&&r.test.ip!==ip)r.test.ipChanges=(r.test.ipChanges||0)+1;r.test.ip=ip}   /* changement d'adresse = reconnexion au Wi-Fi */  /* 4000 : remplacé par le même appareil, ne pas se reconnecter */
+        /* Contrôle automatique : un nouvel appareil est mesuré pendant 1 minute dès sa connexion (sauf test d'aptitude en cours) */
+        if(role==='publisher'&&!(r.test&&!r.test.result)&&(how==='new'||!r.auto||r.auto.id!==cid.slice(0,6)))r.auto={t0:Date.now(),samples:[],drops:0,result:null,done:null,id:cid.slice(0,6),ip};
         if(role==='viewer'){r.active=m.active===true;r.onair=m.onair===true;send(r.publisher,{type:'viewer-joined',keep:r.active});send(r.publisher,{type:'onair',value:r.onair})}
         else{if(r.viewer)send(ws,{type:'viewer-joined',keep:!!r.active});send(ws,{type:'onair',value:live(r.viewer)&&!!r.onair})}  /* le téléphone connaît tout de suite son statut */
         return;
@@ -245,6 +259,7 @@ function createServer(opts={}){
     ws.on('close',code=>{
       if(room)jlog('close',{room,role,code,secs:Math.round((Date.now()-tConn)/1000)});
       const r=rooms.get(room);if(!r||r[role]!==ws)return;
+      if(role==='publisher'&&r.auto&&!r.auto.result&&code!==4000)r.auto.drops++;   /* coupure pendant le contrôle automatique */
       if(role==='publisher'&&r.test&&!r.test.result&&code!==4000)r.test.drops++;   /* coupure pendant un test d'aptitude */
       r[role]=null;if(role==='viewer'){r.active=false;r.onair=false;r.vstats=null}else{r.stats=null;r.settings=null}
       const other=role==='viewer'?'publisher':'viewer';

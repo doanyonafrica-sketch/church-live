@@ -58,11 +58,12 @@ function sessions(ev){const out=[];let cur=null;
 function evaluateDevice(snaps,info){
   info=info||{};
   const num=x=>typeof x==='number'&&isFinite(x);
-  if(snaps.length>=21)snaps=snaps.slice(3);   /* les 30 premières secondes (établissement de la liaison) ne comptent pas */
+  const quick=!!info.quick,step=info.step||10;   /* contrôle rapide à la connexion : mesures toutes les 2 s, 10 premières secondes ignorées */
+  if(quick){if(snaps.length>=17)snaps=snaps.slice(5)}else if(snaps.length>=21)snaps=snaps.slice(3);   /* les 30 premières secondes (établissement de la liaison) ne comptent pas */
   const n=snaps.length;
   const col=k=>snaps.map(s=>s[k]).filter(num),q=(a,f)=>{a=a.slice().sort((x,y)=>x-y);return a.length?a[Math.min(a.length-1,Math.floor(a.length*f))]:null};
-  const out={verdict:'insuffisant',title:'Test trop court',scope:'',checks:[],advice:[],fig:{n:n,secs:n*10},device:info.device||'',why:'',cause:{kind:'insuffisant',title:'Test trop court : pas de conclusion possible',why:[],proof:''}};
-  if(n<18){out.advice.push('Relancez le test et laissez-le durer 5 minutes, avec le téléphone connecté.');return out}
+  const out={verdict:'insuffisant',title:'Test trop court',scope:'',checks:[],advice:[],fig:{n:n,secs:n*step},device:info.device||'',why:'',cause:{kind:'insuffisant',title:'Test trop court : pas de conclusion possible',why:[],proof:''}};
+  if(n<(quick?12:18)){out.advice.push(quick?'Laissez le téléphone diffuser une minute de plus.':'Relancez le test et laissez-le durer 5 minutes, avec le téléphone connecté.');return out}
   const fps=avg(col('fps')),fps10=q(col('fps'),.1),rtt50=q(col('rtt'),.5),rtt95=q(col('rtt'),.95),loss=avg(col('loss'));
   const bad=snaps.filter(s=>s.level==='bad').length/n,cpu=snaps.filter(s=>s.limit==='cpu').length/n,th=Math.max(0,...col('thermal'));
   const resC={};for(const s of snaps)if(s.res&&s.res!=='0×0')resC[s.res]=(resC[s.res]||0)+1;
@@ -124,7 +125,7 @@ function evaluateDevice(snaps,info){
     :netBad?(l24?{kind:'wifi24',title:'Cause probable : le Wi-Fi 2,4 GHz',why:netWhy,proof:PW}:{kind:'network',title:'Cause probable : le réseau (Wi-Fi, routeur ou distance)',why:netWhy,proof:PN})
     :phoneBad?{kind:'phone',title:'Cause probable : le téléphone lui-même',why:phoneWhy,proof:PP}
     :{kind:'unknown',title:'Cause non déterminée',why:['les mesures sont limites, sans signe net du téléphone ni du réseau'],proof:'Refaites un test complet de 10 minutes pour avoir plus de mesures.'};
-  out.fig={n,secs:n*10,fps:r1(fps),rtt50,rtt95,loss:r1(loss),bad:Math.round(bad*100),cpu:Math.round(cpu*100),thermal:th,drops:num(info.drops)?info.drops:null,drain:drain==null?null:Math.round(drain),quality:h,
+  out.fig={n,secs:n*step,fps:r1(fps),rtt50,rtt95,loss:r1(loss),bad:Math.round(bad*100),cpu:Math.round(cpu*100),thermal:th,drops:num(info.drops)?info.drops:null,drain:drain==null?null:Math.round(drain),quality:h,
     band:p24==null?null:(p24>=0.5?'2,4':'5'),speed:sp==null?null:r1(sp),ipChanges:ipCh,camfps:cf==null?null:Math.round(cf)};
   return out}
 
@@ -290,4 +291,38 @@ function summarize(ev){
         :'   ⇒ Le résultat est meilleur en 2,4 GHz : la bande n\'est pas la cause (autre endroit, autre moment, ou variations du réseau).')}}
   return{text:L.join('\n'),rooms:[...all],sessions:S.length};
 }
-module.exports={createJournal,cleanClientLog,summarize,evaluateDevice};
+
+/* Contrôle automatique d'un téléphone qui vient de se connecter : on le compare au téléphone de référence : celui qui a très bien tenu le culte du 15 novembre (c'était sur l'emplacement « Caméra 1 »).
+   Ces valeurs sont FIXES, mémorisées ici : elles ne dépendent jamais du téléphone actuellement branché sur un emplacement, y compris « Caméra 1 »
+   (4 Go de mémoire, Android 10, Wi-Fi 5 GHz, 30 images/s, latence d'environ 10 ms, aucune perte). Même verdict que le test d'aptitude. */
+const REFERENCE={ram:4,android:10,text:'téléphone de référence (4 Go de mémoire, Android 10, Wi-Fi 5 GHz, 30 images/s, latence d\'environ 10 ms)'};
+function staticChecks(info){
+  info=info||{};const out=[],num=x=>typeof x==='number'&&isFinite(x);
+  const C=(key,name,status,detail,advice)=>out.push({key,name,status,detail,advice:advice||''});
+  /* mémoire (valeur approchée donnée par le téléphone : 2, 4 ou 8 Go) */
+  if(num(info.ram))C('ram','Mémoire',info.ram>=4?'ok':info.ram>=2?'warn':'fail','environ '+info.ram+' Go (le téléphone de référence en a 4)',
+    info.ram>=4?'':info.ram>=2?'Mémoire juste : redémarrez le téléphone avant le culte, fermez toutes les autres applications et, si l\'image saccade, baissez la qualité à 480p.':'Mémoire trop faible pour un direct fluide : gardez ce téléphone en secours et utilisez un téléphone de 4 Go de mémoire ou plus.');
+  /* version d'Android */
+  const am=/Android (\d+)/.exec(info.ua||''),av=am?+am[1]:null;
+  if(av!=null)C('android','Version d\'Android',av>=10?'ok':av===9?'warn':'fail','Android '+av+' (le téléphone de référence : Android 10)',av>=10?'':'Mettez Android à jour si une mise à jour existe ; sinon utilisez un téléphone plus récent.');
+  /* alimentation : en direct, la batterie du téléphone de référence perdait environ 40 % par heure */
+  const b=num(info.battery)?info.battery:null;
+  if(info.charging===true)C('plug','Alimentation','ok','branché'+(b!=null?' ('+b+' %)':''),'');
+  else if(info.charging===false)C('plug','Alimentation',b!=null&&b<20?'fail':'warn','non branché'+(b!=null?' ('+b+' %)':''),
+    (b!=null&&b<20?'Batterie presque vide : branchez le téléphone tout de suite. ':'')+'Branchez le téléphone au chargeur pendant tout le direct : en direct, la batterie du téléphone de référence perdait environ 40 % par heure.');
+  return out}
+function evaluateQuick(samples,info){
+  info=info||{};
+  const r=evaluateDevice(samples,{...info,quick:true,step:info.step||2});
+  const S=staticChecks(info),live=r.checks.filter(c=>c.key!=='bat'),all=S.concat(live);   /* « bat » est remplacé par le contrôle d'alimentation */
+  const F=all.filter(c=>c.status==='fail'),W=all.filter(c=>c.status==='warn'),tooShort=r.verdict==='insuffisant';
+  r.checks=all;r.verdict=F.length?'non':W.length?'conditions':tooShort?'insuffisant':'apte';
+  r.title=F.length?'Non apte au direct':W.length?'Apte sous conditions':tooShort?'Contrôle trop court':'Apte au direct';
+  r.advice=[];for(const c of F.concat(W))if(c.advice&&!r.advice.includes(c.advice))r.advice.push(c.advice);
+  if(tooShort&&!r.advice.length)r.advice.push('Le téléphone s\'est déconnecté avant la fin du contrôle : reconnectez-le et laissez-le diffuser une minute.');
+  r.why=F.concat(W).map(c=>c.name+' ('+c.detail+')').join(' ; ').slice(0,110);
+  if(r.cause&&(r.cause.kind==='ok'||r.cause.kind==='insuffisant')&&(F.length||W.length))r.cause={kind:'unknown',title:'Points à régler avant le direct',why:F.concat(W).map(c=>c.name+' : '+c.detail),proof:''};
+  r.scope='Contrôle automatique de '+Math.round((r.fig&&r.fig.secs)||0)+' secondes, comparé au '+REFERENCE.text+'.'+(r.scope?' '+r.scope:'');
+  return r}
+
+module.exports={createJournal,cleanClientLog,summarize,evaluateDevice,evaluateQuick,staticChecks,REFERENCE};

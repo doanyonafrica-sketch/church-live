@@ -214,6 +214,7 @@ header #banner .big{font-size:16px}header #banner small{font-size:12px;margin-to
 .sechead h2{font-size:18px}
 .nl{margin:6px 0 12px;padding-left:20px;color:var(--mute)}.nl li{margin:4px 0}.chk{display:flex;gap:10px;align-items:center;margin:8px 0 12px;font-weight:600}.chk input{width:18px;height:18px;accent-color:var(--gold)}
 .rh{font:600 17px var(--serif);margin:18px 0 6px;padding-top:14px;border-top:1px solid var(--line)}.rem{display:grid;gap:12px}.days{display:flex;gap:8px;flex-wrap:wrap}.days label{display:flex;gap:6px;align-items:center;background:var(--surf2);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-weight:600;cursor:pointer}.days input{accent-color:var(--gold)}.rrow{display:flex;gap:14px;flex-wrap:wrap;align-items:end}.rrow label{display:flex;flex-direction:column;gap:4px;color:var(--mute);font-size:13px}input[type=time]{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px 12px}
+.badge.va{background:#1f6b3a;color:#fff}.badge.vc{background:#8a6410;color:#fff}.badge.vn{background:#a33a3a;color:#fff}.tdet[data-v=apte]>summary{color:#5fcf86}.tdet[data-v=conditions]>summary{color:#e6b34a}.tdet[data-v=non]>summary{color:#ef6b6b}
 </style>
 <header><img src="/logo.png" alt="Tabernacle La Parole Révélée"><div class="ttl"><h1>TPR Live</h1><p>Tabernacle La Parole Révélée</p></div>
 <div id="banner" class="wait"><i></i><div><div class="big" id="bt">Démarrage…</div><small id="bs"></small></div></div></header>
@@ -241,6 +242,8 @@ header #banner .big{font-size:16px}header #banner small{font-size:12px;margin-to
 </div>
 
 <div id="help" hidden>
+<div class="card"><h2>Téléphone de référence</h2><p>Chaque téléphone qui se connecte est comparé à ces valeurs, mémorisées une fois pour toutes dans l'application. Elles viennent du téléphone qui a très bien tenu le culte du 15 novembre. Elles ne changent jamais quand un autre téléphone se connecte, même sur l'emplacement « Caméra 1 ».</p>
+<ul class="nl"><li>mémoire : 4 Go ou plus ;</li><li>Android 10 ou plus ;</li><li>Wi-Fi 5 GHz, liaison d'environ 140 Mb/s ;</li><li>30 images par seconde, latence d'environ 10 ms, aucune perte ;</li><li>branché pendant tout le direct (en direct, la batterie baissait d'environ 40 % par heure).</li></ul></div>
 <div class="card"><h2>Notifications sur le PC</h2><p>Une notification Windows apparaît, une seule fois par problème, avec un son d'alerte (trois bips pour une alerte critique, avec clignotement dans la barre des tâches) quand :</p>
 <ul class="nl"><li>le Wi-Fi 2,4 GHz est mauvais (il faut demander au téléphone de passer sur le 5 GHz) ;</li><li>la batterie d'un téléphone non branché passe sous 50 %, puis 30 %, puis 15 % ;</li><li>le téléphone signale un problème (il chauffe, le réseau est instable…) ;</li><li>OBS ne reçoit plus l'image d'un téléphone connecté ;</li><li>un téléphone à l'antenne se déconnecte (et quand il revient) ;</li><li>le processeur du PC est surchargé depuis plus de 30 secondes ;</li><li>l'espace libre du disque où TPR Live range ses données passe sous 5 Go, puis sous 1 Go ;</li><li>le direct est terminé : bilan avec la durée, les coupures et la batterie restante.</li></ul>
 <label class="chk"><input type="checkbox" id="notifon"> Recevoir les notifications Windows</label>
@@ -362,7 +365,7 @@ function wifiAlert(rs){
 const NOTIFIED={};
 function statHtml(x,st,vs){
   const n=x.room==='main'?1:String(x.room).replace('cam',''),v=verdict(x,st,vs);
-  let h='<h3>Caméra '+esc(n)+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+'</h3>'
+  let h='<h3>Caméra '+esc(n)+(x.onair?' <span class="badge bad">À l\'antenne</span>':'')+(()=>{const R=x.test&&x.test.result?x.test.result:(x.auto&&x.auto.result);return R&&R.verdict!=='insuffisant'?' <span class="badge v'+R.verdict[0]+'">'+esc(R.title)+'</span>':''})()+'</h3>'
     +'<div class="verd '+v.lv+'"><i></i><div><b>'+esc(v.t)+'</b><small>'+esc(v.d)+'</small></div></div>';
   if(st){const c=conn(st),low=st.battery!=null&&st.battery<20&&!st.charging;
     h+='<div class="kv">'+kv('Connexion',c[0],c[1])+kv('Batterie',st.battery!=null?st.battery+' %'+(st.charging?' (en charge)':''):'—',low?'bad2':'')
@@ -435,6 +438,12 @@ $('cams').addEventListener('change',e=>{const c=e.target.closest('[data-k]');if(
   push(room,{[k]:k==='q'||k==='mvol'?+c.value:c.value})});
 $('cams').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const room=roomOf(b),k=b.dataset.a,S=(LAST[room]||{}).settings||{},p=PEND[room+'|'+k];
   push(room,{[k]:!(p?p.v:S[k])})});
+/* Fiche du téléphone : contrôle automatique à la connexion (même présentation que le test d'aptitude) */
+function autoHtml(x){
+  const A=x&&x.auto;if(!A)return testHtml(null,x);
+  if(A.running){const e=Math.round(A.elapsed/1000),d=Math.round(A.dur/1000);
+    return '<div class="tbox"><b>Contrôle automatique du téléphone : '+e+' s / '+d+' s</b><div class="tbar"><i style="width:'+Math.min(100,Math.round(e/d*100))+'%"></i></div><small>Le téléphone est comparé au téléphone de référence (valeurs fixes) : mémoire, Android, alimentation, Wi-Fi, fluidité, latence. Laissez-le diffuser.</small></div>'}
+  return testHtml({running:false,result:A.result},x).replace('Refaire (5 min)','Test complet (5 min)').replace('Refaire (10 min)','Test complet (10 min)')}
 /* Alertes du haut de la fenêtre : on peut les masquer (×) ; elles ne reviennent que si leur contenu change ou après la fin du problème */
 const DISM={};
 function showAlert(b,html,cls){
@@ -455,7 +464,7 @@ let flashAt=0;
 function notify(title,body,tag,crit){if(!NOTIF)return false;beep(crit);
   if(crit&&Date.now()-flashAt>5000){flashAt=Date.now();try{fetch('/api/flash',{method:'POST'}).catch(()=>{})}catch{}}   /* l'icône clignote dans la barre des tâches tant que la fenêtre n'est pas ouverte */
   try{if(window.Notification&&Notification.permission==='granted'){new Notification(title,{body,tag:tag||title,silent:true});return true}}catch{}return false}
-const W={},BAT={},WAS={},HADV={},SESS={on:false,t0:0,gap:0,drops:0,was:new Set(),gone:new Set(),bat:{}};
+const W={},BAT={},WAS={},HADV={},AUTO={},SESS={on:false,t0:0,gap:0,drops:0,was:new Set(),gone:new Set(),bat:{}};
 const dur=ms=>{const m=Math.round(ms/60000);return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')};
 /* watch : déclenche onBad() une seule fois quand « bad » dure depuis au moins « delay » ms ; onBack() quand tout redevient normal après une alerte */
 function watch(key,bad,delay,onBad,onBack){const w=W[key]||(W[key]={t:0,n:0}),now=Date.now();
@@ -467,6 +476,10 @@ function alerts(rs){
   for(const x of rs){
     const r=x.room,n=camName(r),st=x.stats&&x.stats.age<5000?x.stats:null;
     if(x.publisher){pub.add(r);WAS[r]=!!x.onair;if(x.viewer)HADV[r]=true}else delete HADV[r];
+    /* verdict du contrôle automatique à la connexion : annoncé une seule fois */
+    {const A=x.auto&&x.auto.result;
+      if(A&&x.auto.done&&AUTO[r]!==x.auto.done){AUTO[r]=x.auto.done;
+        if(Date.now()-x.auto.done<120000&&A.verdict!=='insuffisant')notify('TPR Live : '+n+' : '+A.title,A.verdict==='apte'?'Ce téléphone est au niveau du téléphone de référence : vous pouvez le mettre à l\'antenne.':(A.advice&&A.advice[0])||A.why||'','auto'+r,A.verdict==='non')}}
     /* batterie : trois paliers (50, 30 puis 15 %), chacun une seule fois tant que le téléphone n'est pas rebranché */
     if(st&&st.battery!=null){
       if(st.charging||st.battery>=55)BAT[r]=0;
@@ -532,8 +545,11 @@ function cams(list){
     LAST[x.room]=x;
     const st=x.stats&&x.stats.age<5000?x.stats:null,vs=x.vstats&&x.vstats.age<5000?x.vstats:null;
     el.querySelector('.stat').innerHTML=statHtml(x,st,vs);
-    const th=testHtml(x.test,x);if(el._th!==th){el._th=th;el.querySelector('.tst').innerHTML=th}
-    {const td=el.querySelector('.tdet'),tr=!!(x.test&&x.test.running);td.hidden=!th;if(tr&&!el._tr)td.open=true;el._tr=tr}   /* ne réécrit la zone du test que si elle change */
+    const th=(x.test&&(x.test.running||x.test.result)?testHtml(x.test,x):autoHtml(x));if(el._th!==th){el._th=th;el.querySelector('.tst').innerHTML=th}
+    {const td=el.querySelector('.tdet'),tr=!!(x.test&&x.test.running),R=x.test&&x.test.result?x.test.result:(x.auto&&x.auto.result),sm=td.querySelector('summary'),
+      lab='Fiche du téléphone'+(R?' : '+R.title:x.auto&&x.auto.running?' : contrôle en cours…':' et test d\'aptitude'),ak=(x.auto&&x.auto.done)||0;
+      td.hidden=!th;if(sm._l!==lab){sm._l=lab;sm.textContent=lab}td.dataset.v=R?R.verdict:'';
+      if((tr&&!el._tr)||(ak&&ak!==el._ak&&R&&R.verdict!=='apte'))td.open=true;el._tr=tr;el._ak=ak}   /* ne réécrit la zone du test que si elle change */
     updSettings(x.room,el,x)})}
 async function r(){let i;try{i=await (await fetch('/info')).json()}catch{return}
 INFO=i;
